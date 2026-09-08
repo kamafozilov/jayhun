@@ -4930,8 +4930,8 @@ mod tests {
     #[test]
     fn pr_head_filter_qualifies_branch_with_repo_owner() {
         assert_eq!(
-            github_pr_head_filter("hardbeat920/jayhun", "main").as_deref(),
-            Some("hardbeat920:main")
+            github_pr_head_filter("kamafozilov/jayhun", "main").as_deref(),
+            Some("kamafozilov:main")
         );
     }
 
@@ -5012,8 +5012,8 @@ mod tests {
     #[test]
     fn split_github_repo_reads_owner_and_name() {
         assert_eq!(
-            split_github_repo(" hardbeat920/jayhun ").unwrap(),
-            ("hardbeat920".into(), "jayhun".into())
+            split_github_repo(" kamafozilov/jayhun ").unwrap(),
+            ("kamafozilov".into(), "jayhun".into())
         );
         assert!(split_github_repo("jayhun").is_err());
         assert!(split_github_repo("acme/web extra").is_err());

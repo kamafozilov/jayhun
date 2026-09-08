@@ -197,20 +197,20 @@ describe("dedupeInboxItems", () => {
         number: 10,
         updatedAt: "2026-08-27T10:00:00Z",
         projectPath: "/tmp/agent-terminal",
-        repo: "hardbeat920/jayhun",
+        repo: "kamafozilov/jayhun",
       }),
       item({
         number: 10,
         updatedAt: "2026-08-27T10:00:00Z",
         projectPath: "/tmp/jayhun",
-        repo: "HardBeat920/jayhun",
+        repo: "Kamafozilov/jayhun",
       }),
     ];
     const deduped = dedupeInboxItems(rows, ["/tmp/jayhun", "/tmp/agent-terminal"]);
     expect(deduped).toHaveLength(1);
     expect(deduped[0]?.projectPath).toBe("/tmp/jayhun");
     expect(inboxItemKey(deduped[0]!)).toBe(
-      "github:hardbeat920/jayhun:issue:10",
+      "github:kamafozilov/jayhun:issue:10",
     );
   });
 });
@@ -219,8 +219,8 @@ describe("groupProjectsByRepo", () => {
   it("fetches each GitHub remote once", () => {
     expect(
       groupProjectsByRepo([
-        { path: "/tmp/jayhun", repo: "hardbeat920/jayhun" },
-        { path: "/tmp/agent-terminal", repo: "HardBeat920/jayhun" },
+        { path: "/tmp/jayhun", repo: "kamafozilov/jayhun" },
+        { path: "/tmp/agent-terminal", repo: "Kamafozilov/jayhun" },
         { path: "/tmp/docs", repo: "acme/docs" },
       ]).map((project) => project.path),
     ).toEqual(["/tmp/jayhun", "/tmp/docs"]);

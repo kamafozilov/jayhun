@@ -578,7 +578,11 @@ fn write_dev_bundle_icons(app: &std::path::Path) -> Result<(), String> {
     std::fs::create_dir_all(&resources).map_err(|e| e.to_string())?;
     std::fs::write(app.join("Contents/Info.plist"), DEV_BUNDLE_PLIST).map_err(|e| e.to_string())?;
     std::fs::write(resources.join("AppIcon.icns"), DEV_ICNS).map_err(|e| e.to_string())?;
-    std::fs::write(resources.join("Assets.car"), DEV_ASSETS_CAR).map_err(|e| e.to_string())?;
+    // Remove the inherited asset catalog from existing development bundles.
+    let legacy_assets = resources.join("Assets.car");
+    if legacy_assets.exists() {
+        std::fs::remove_file(legacy_assets).map_err(|e| e.to_string())?;
+    }
     let _ = std::process::Command::new("/usr/bin/touch")
         .arg(app)
         .status();
@@ -591,8 +595,6 @@ const DEV_BUNDLE_ID: &str = "dev.kamafozilov.jayhun";
 #[cfg(debug_assertions)]
 const DEV_ICNS: &[u8] = include_bytes!("../icons/icon.icns");
 #[cfg(debug_assertions)]
-const DEV_ASSETS_CAR: &[u8] = include_bytes!("../macos/Assets.car");
-#[cfg(debug_assertions)]
 const DEV_BUNDLE_PLIST: &[u8] = br#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -604,8 +606,6 @@ const DEV_BUNDLE_PLIST: &[u8] = br#"<?xml version="1.0" encoding="UTF-8"?>
 	<key>CFBundleExecutable</key>
 	<string>jayhun</string>
 	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
-	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>dev.kamafozilov.jayhun</string>

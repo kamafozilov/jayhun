@@ -60,8 +60,10 @@ Merge selected upstream changes on a separate branch and test before merging
 into `main`. Preserve the original Git history and license.
 
 Jayhun uses the app identifier `dev.kamafozilov.jayhun` and its own storage keys.
-It does not import existing MonoCode sessions. The inherited icon assets remain
-in use until a Jayhun icon is designed. `CHANGELOG.md` records inherited history.
+It does not import existing MonoCode sessions. The source icon is `public/jayhun.svg`.
+Run `node scripts/generate-icons.mjs` on macOS to rebuild desktop icon assets.
+`CHANGELOG.md` contains Jayhun release notes. The original release history is
+preserved in `docs/upstream/monocode-changelog.md`.
 
 ## License
 
