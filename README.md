@@ -27,7 +27,9 @@ app and its native features. `npm run tauri:stable` runs without Rust file watch
 ```bash
 npm run check
 npm run build
-npm run tauri build -- --bundles app
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD='' \
+TAURI_SIGNING_PRIVATE_KEY="$HOME/.config/jayhun/update-signing/updater.key" \
+  npm run tauri build -- --bundles app
 ```
 
 The last command builds a macOS app at `target/release/bundle/macos/Jayhun.app`.
