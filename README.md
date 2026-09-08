@@ -35,6 +35,7 @@ For Linux packages, run `npm run build:linux`. For Windows, run
 `npm run build:windows` in a Windows environment.
 
 GitHub CI runs frontend and Rust checks on macOS, Linux, and Windows.
+It also supports manual runs from the Actions tab.
 The manual **Build packages** workflow creates downloadable build artifacts.
 It does not publish releases. Builds are not notarized or signed for public
 distribution. Automatic updates are not configured. Public releases and update
@@ -42,7 +43,8 @@ signing will be configured when distribution is needed.
 
 ## Git workflow
 
-- `origin` points to `https://github.com/kamafozilov/jayhun.git`.
+- `origin` fetches from `https://github.com/kamafozilov/jayhun.git`.
+  Pushes use `git@github.com:kamafozilov/jayhun.git` through SSH.
 - `upstream` points to `https://github.com/hardbeat920/monocode.git`.
 - Start changes from `main` on a `feat/`, `fix/`, or `chore/` branch.
 - Run the relevant checks before committing. Use Conventional Commits.
