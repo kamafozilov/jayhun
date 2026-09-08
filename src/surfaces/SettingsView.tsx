@@ -178,9 +178,11 @@ import {
 } from "../lib/notifications";
 import {
   installPendingUpdate,
-  readAppVersion,
   runUpdateFlow,
-  type UpdaterSnapshot,
+  getUpdaterSnapshot,
+  subscribeUpdater,
+  restartToUpdate,
+  previewUpdate,
 } from "../lib/updater";
 
 type Props = {
@@ -704,47 +706,46 @@ function UpdateRow({
 }: {
   onOpenWhatsNew: (version: string) => void;
 }) {
-  const [snapshot, setSnapshot] = useState<UpdaterSnapshot>({
-    phase: "idle",
-    currentVersion: "…",
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    void readAppVersion().then((currentVersion) => {
-      if (cancelled) return;
-      setSnapshot((current) => ({ ...current, currentVersion }));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const snapshot = useSyncExternalStore(subscribeUpdater, getUpdaterSnapshot);
 
   const busy =
-    snapshot.phase === "checking" || snapshot.phase === "downloading";
+    snapshot.phase === "checking" ||
+    snapshot.phase === "downloading" ||
+    snapshot.phase === "installing";
   const hasUpdate = snapshot.phase === "available";
 
   const onClick = async () => {
     if (busy) return;
-    if (hasUpdate) {
-      await installPendingUpdate(setSnapshot);
+    if (snapshot.phase === "ready") {
+      await restartToUpdate();
       return;
     }
-    await runUpdateFlow(true, setSnapshot);
+    if (
+      hasUpdate ||
+      (snapshot.phase === "error" && snapshot.availableVersion)
+    ) {
+      await installPendingUpdate();
+      return;
+    }
+    await runUpdateFlow(true);
   };
 
   const status =
-    snapshot.phase === "available"
-      ? `Version ${snapshot.availableVersion} is available.`
-      : snapshot.phase === "downloading"
-        ? `Downloading${snapshot.progress != null ? ` ${snapshot.progress}%` : "…"}`
-        : snapshot.phase === "checking"
-          ? "Checking for updates…"
-          : snapshot.phase === "current"
-            ? "You're on the latest version."
-            : snapshot.phase === "error"
-              ? (snapshot.error ?? "Update check failed.")
-              : "Jayhun updates itself from the release feed.";
+    snapshot.phase === "ready"
+      ? "Update downloaded. Restart when you are ready."
+      : snapshot.phase === "installing"
+        ? "Restarting to update…"
+        : snapshot.phase === "available"
+          ? `Version ${snapshot.availableVersion} is available.`
+          : snapshot.phase === "downloading"
+            ? `Downloading${snapshot.progress != null ? ` ${snapshot.progress}%` : "…"}`
+            : snapshot.phase === "checking"
+              ? "Checking for updates…"
+              : snapshot.phase === "current"
+                ? "You're on the latest version."
+                : snapshot.phase === "error"
+                  ? (snapshot.error ?? "Update check failed.")
+                  : "Jayhun updates itself from the release feed.";
 
   return (
     <Row
@@ -765,15 +766,26 @@ function UpdateRow({
         >
           What's new
         </SecondaryButton>
+        {import.meta.env.DEV ? (
+          <SecondaryButton onClick={() => void previewUpdate()} disabled={busy}>
+            Preview update
+          </SecondaryButton>
+        ) : null}
         <SecondaryButton onClick={() => void onClick()} disabled={busy}>
           {busy ? (
-          <Loader className="size-3.5 animate-spin" aria-hidden />
-        ) : hasUpdate ? (
-          <ArrowDownCircle className="size-3.5 text-accent" aria-hidden />
-        ) : (
-          <RefreshCw className="size-3.5" strokeWidth={1.75} aria-hidden />
-        )}
-          {hasUpdate ? "Download" : "Check for updates"}
+            <Loader className="size-3.5 animate-spin" aria-hidden />
+          ) : hasUpdate ? (
+            <ArrowDownCircle className="size-3.5 text-accent" aria-hidden />
+          ) : (
+            <RefreshCw className="size-3.5" strokeWidth={1.75} aria-hidden />
+          )}
+          {snapshot.phase === "ready"
+            ? "Restart to update"
+            : busy
+              ? "Please wait…"
+              : hasUpdate
+                ? "Download"
+                : "Check for updates"}
         </SecondaryButton>
       </div>
     </Row>
@@ -1629,7 +1641,9 @@ function Segmented<T extends string>({
       role="radiogroup"
       aria-label={label}
       className="inline-grid shrink-0 gap-0.5 rounded-md border border-content/10 p-0.5 text-[12px]"
-      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      style={{
+        gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))`,
+      }}
     >
       {options.map((option) => (
         <button

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Jayhun",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "identifier": "dev.kamafozilov.jayhun",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -42,7 +42,7 @@
     }
   },
   "bundle": {
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "active": true,
     "targets": "all",
     "icon": [
@@ -59,8 +59,10 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
-      "endpoints": []
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJGMTAzNTgwNjA2MkEyMUUKUldRZW9tSmdnRFVRdjUzcFE1WEo5VnkzTno5LzdPdldMdzlsZWVudkViS0VIaXpVVTNCRnhTM0cK",
+      "endpoints": [
+        "https://github.com/kamafozilov/jayhun/releases/latest/download/latest.json"
+      ]
     }
   }
 }

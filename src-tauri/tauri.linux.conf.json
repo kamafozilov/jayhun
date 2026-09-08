@@ -22,7 +22,7 @@
       "deb",
       "appimage"
     ],
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "category": "DeveloperTool",
     "linux": {
       "appimage": {

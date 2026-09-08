@@ -1,11 +1,11 @@
 import { ArrowDownCircle, Loader, RefreshCw } from "./icons";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import {
   installPendingUpdate,
-  probeForUpdate,
-  readAppVersion,
-  runUpdateFlow,
-  type UpdaterSnapshot,
+  startUpdater,
+  getUpdaterSnapshot,
+  subscribeUpdater,
+  restartToUpdate,
 } from "../lib/updater";
 import type { InstalledUpdate } from "../lib/updateNotice";
 import { UpdateRailCard } from "./UpdateRailCard";
@@ -34,97 +34,80 @@ export function SidebarUpdateFooter({
 }
 
 export function SidebarUpdate() {
-  const [snapshot, setSnapshot] = useState<UpdaterSnapshot>({
-    phase: "idle",
-    currentVersion: "…",
-  });
-
+  const snapshot = useSyncExternalStore(subscribeUpdater, getUpdaterSnapshot);
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      const currentVersion = await readAppVersion();
-      if (cancelled) return;
-      setSnapshot({ phase: "checking", currentVersion });
-
-      try {
-        const update = await probeForUpdate();
-        if (cancelled) return;
-        if (update) {
-          setSnapshot({
-            phase: "available",
-            currentVersion,
-            availableVersion: update.version,
-          });
-          return;
-        }
-        setSnapshot({ phase: "current", currentVersion });
-      } catch {
-        if (cancelled) return;
-        setSnapshot({ phase: "idle", currentVersion });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const onClick = useCallback(async () => {
-    if (snapshot.phase === "downloading" || snapshot.phase === "checking") {
-      return;
-    }
-
-    if (snapshot.phase === "available") {
-      await installPendingUpdate(setSnapshot);
-      return;
-    }
-
-    await runUpdateFlow(true, setSnapshot);
-  }, [snapshot.phase]);
-
-  const busy =
-    snapshot.phase === "checking" || snapshot.phase === "downloading";
-  const hasUpdate = snapshot.phase === "available";
-  const label = hasUpdate
-    ? `Update to ${snapshot.availableVersion}`
-    : busy
-      ? snapshot.phase === "downloading"
-        ? `Downloading${snapshot.progress != null ? ` ${snapshot.progress}%` : "…"}`
-        : "Checking…"
-      : "Check for updates";
-
+    return startUpdater();
+  }, [startUpdater]);
+  const { phase } = snapshot;
+  if (
+    !["available", "downloading", "ready", "installing", "error"].includes(
+      phase,
+    ) ||
+    (phase === "error" && !snapshot.availableVersion)
+  )
+    return null;
+  const busy = phase === "downloading" || phase === "installing";
+  const label =
+    phase === "downloading"
+      ? "Downloading…"
+      : phase === "installing"
+        ? "Restarting…"
+        : phase === "ready"
+          ? "Restart to update"
+          : phase === "error"
+            ? "Retry download"
+            : "Update available";
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => {
+        void (phase === "ready" ? restartToUpdate() : installPendingUpdate());
+      }}
       disabled={busy}
-      className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors ${
-        hasUpdate
-          ? "bg-accent/15 text-content hover:bg-accent/20"
-          : "bg-content/5 text-content/75 hover:bg-content/10 hover:text-content"
-      } disabled:cursor-default disabled:opacity-70`}
+      title={
+        snapshot.demo
+          ? "Update preview. No download or restart will occur."
+          : snapshot.error
+      }
+      className="relative isolate flex w-full items-center gap-2 overflow-hidden rounded-lg bg-content/5 px-2 py-2 text-left text-content/75 transition-colors hover:bg-content/10 hover:text-content disabled:cursor-default"
     >
+      {phase === "downloading" ? (
+        <span
+          role="progressbar"
+          aria-label="Update download"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={snapshot.progress}
+          className={`absolute inset-y-0 left-0 -z-10 bg-content/10 transition-[width] duration-150 motion-reduce:transition-none ${snapshot.progress == null ? "animate-pulse motion-reduce:animate-none" : ""}`}
+          style={{ width: `${snapshot.progress ?? 100}%` }}
+        />
+      ) : null}
       <span className="grid size-[18px] shrink-0 place-items-center">
         {busy ? (
-          <Loader className="size-4 animate-spin opacity-70" aria-hidden />
-        ) : hasUpdate ? (
-          <ArrowDownCircle className="size-4 text-accent" aria-hidden />
-        ) : (
-          <RefreshCw
-            className="size-4 opacity-70"
-            strokeWidth={1.75}
+          <Loader
+            className="size-4 animate-spin motion-reduce:animate-none opacity-70"
             aria-hidden
           />
+        ) : phase === "ready" ? (
+          <RefreshCw className="size-4 opacity-70" aria-hidden />
+        ) : (
+          <ArrowDownCircle className="size-4 opacity-70" aria-hidden />
         )}
       </span>
-      <span className="min-w-0 flex-1 flex items-center">
-        <span className="block truncate text-[12px] font-medium leading-tight">
-          {label}
-        </span>
-        <span className="ml-auto block text-[11px] text-content/40">
-          v{snapshot.currentVersion}
-        </span>
+      <span
+        className="min-w-0 flex-1 truncate text-[12px] font-medium leading-tight"
+        aria-live="polite"
+      >
+        {label}
+      </span>
+      <span className="shrink-0 text-[11px] tabular-nums text-content/60">
+        {phase === "downloading"
+          ? snapshot.progress == null
+            ? "…"
+            : `${snapshot.progress}%`
+          : snapshot.demo
+            ? "Demo"
+            : `v${snapshot.availableVersion}`}
       </span>
     </button>
   );
