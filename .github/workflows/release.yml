@@ -2,6 +2,11 @@ name: Build release
 
 on:
   workflow_dispatch:
+    inputs:
+      verify_only:
+        description: Validate existing draft assets without rebuilding
+        type: boolean
+        default: false
   push:
     tags: ["v*"]
 
@@ -44,6 +49,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   build:
+    if: ${{ !inputs.verify_only }}
     needs: prepare
     strategy:
       fail-fast: false
@@ -93,6 +99,7 @@ jobs:
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
   verify:
+    if: ${{ always() && needs.prepare.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
@@ -103,7 +110,11 @@ jobs:
       - name: Verify release feed and assets
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release-id }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           gh release download "$RELEASE_TAG" --dir release-check
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" > release-check/release.json
+          node scripts/finalize-release.mjs release-check
           node scripts/verify-release.mjs release-check
+          gh release upload "$RELEASE_TAG" release-check/latest.json --clobber
