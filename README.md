@@ -27,7 +27,9 @@ app and its native features. `npm run tauri:stable` runs without Rust file watch
 ```bash
 npm run check
 npm run build
-npm run tauri build -- --bundles app
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD='' \
+TAURI_SIGNING_PRIVATE_KEY="$HOME/.config/jayhun/update-signing/updater.key" \
+  npm run tauri build -- --bundles app
 ```
 
 The last command builds a macOS app at `target/release/bundle/macos/Jayhun.app`.
@@ -36,10 +38,10 @@ For Linux packages, run `npm run build:linux`. For Windows, run
 
 GitHub CI runs frontend and Rust checks on macOS, Linux, and Windows.
 It also supports manual runs from the Actions tab.
-The manual **Build packages** workflow creates downloadable build artifacts.
-It does not publish releases. Builds are not notarized or signed for public
-distribution. Automatic updates are not configured. Public releases and update
-signing will be configured when distribution is needed.
+The **Build release** workflow creates a draft release with signed update
+packages for Apple Silicon, Intel macOS, Linux x64, and Windows x64.
+It verifies the update feed before the draft is ready to publish.
+See [Release setup](docs/releases.md) for signing, builds, and publishing.
 
 ## Git workflow
 

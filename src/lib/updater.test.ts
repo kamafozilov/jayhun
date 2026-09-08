@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   announce: vi.fn(),
   check: vi.fn(),
-  downloadAndInstall: vi.fn(),
+  download: vi.fn(),
+  install: vi.fn(),
   getVersion: vi.fn(),
   message: vi.fn(),
   relaunch: vi.fn(),
@@ -21,7 +22,8 @@ vi.mock("./sounds", () => ({ announceUpdateAvailable: mocks.announce }));
 vi.mock("./updateNotice", () => ({ rememberInstalledUpdate: mocks.remember }));
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  vi.stubEnv("DEV", false);
   vi.resetModules();
   mocks.getVersion.mockResolvedValue("0.1.22");
   mocks.relaunch.mockResolvedValue(undefined);
@@ -31,20 +33,26 @@ beforeEach(() => {
 async function updaterWithPendingUpdate() {
   const update = {
     version: "0.1.23",
-    downloadAndInstall: mocks.downloadAndInstall,
+    download: mocks.download,
+    install: mocks.install,
+    close: vi.fn().mockResolvedValue(undefined),
   };
   mocks.check.mockResolvedValue(update);
   const updater = await import("./updater");
-  await updater.probeForUpdate();
+  await updater.runUpdateFlow(false);
   return updater;
 }
 
 describe("installPendingUpdate", () => {
-  it("records a successful installation before relaunching", async () => {
-    mocks.downloadAndInstall.mockResolvedValue(undefined);
+  it("downloads first and installs only after an explicit restart", async () => {
+    mocks.download.mockResolvedValue(undefined);
     const updater = await updaterWithPendingUpdate();
 
-    await updater.installPendingUpdate();
+    const result = await updater.installPendingUpdate();
+    expect(result.phase).toBe("ready");
+    expect(mocks.install).not.toHaveBeenCalled();
+    expect(mocks.relaunch).not.toHaveBeenCalled();
+    await updater.restartToUpdate();
 
     expect(mocks.remember).toHaveBeenCalledWith("0.1.23");
     expect(mocks.relaunch).toHaveBeenCalledOnce();
@@ -54,7 +62,7 @@ describe("installPendingUpdate", () => {
   });
 
   it("does not record or relaunch after installation fails", async () => {
-    mocks.downloadAndInstall.mockRejectedValue(new Error("install failed"));
+    mocks.download.mockRejectedValue(new Error("install failed"));
     const updater = await updaterWithPendingUpdate();
 
     const result = await updater.installPendingUpdate();
@@ -71,4 +79,82 @@ describe("installPendingUpdate", () => {
     expect(mocks.remember).not.toHaveBeenCalled();
     expect(mocks.relaunch).not.toHaveBeenCalled();
   });
+});
+
+it("reports byte progress and finishes at 100 percent", async () => {
+  mocks.download.mockImplementation(async (callback) => {
+    callback({ event: "Started", data: { contentLength: 200 } });
+    callback({ event: "Progress", data: { chunkLength: 50 } });
+    callback({ event: "Finished" });
+  });
+  const updater = await updaterWithPendingUpdate();
+  const progress = vi.fn();
+  await updater.installPendingUpdate(progress);
+  expect(progress.mock.calls.map(([value]) => value.progress)).toEqual([
+    0, 0, 25, 100, 100,
+  ]);
+  expect(updater.getUpdaterSnapshot().phase).toBe("ready");
+});
+
+it("keeps progress unknown when the server omits content length", async () => {
+  mocks.download.mockImplementation(async (callback) => {
+    callback({ event: "Started", data: {} });
+    callback({ event: "Progress", data: { chunkLength: 50 } });
+  });
+  const updater = await updaterWithPendingUpdate();
+  const progress = vi.fn();
+  await updater.installPendingUpdate(progress);
+  expect(progress.mock.calls[2][0].progress).toBeUndefined();
+  expect(updater.getUpdaterSnapshot().progress).toBe(100);
+});
+
+it("shares a check between simultaneous callers", async () => {
+  mocks.check.mockResolvedValue(null);
+  const updater = await import("./updater");
+  await Promise.all([
+    updater.runUpdateFlow(false),
+    updater.runUpdateFlow(false),
+  ]);
+  expect(mocks.check).toHaveBeenCalledOnce();
+});
+
+it("downloads only once when two views request the update", async () => {
+  mocks.download.mockResolvedValue(undefined);
+  const updater = await updaterWithPendingUpdate();
+  await Promise.all([
+    updater.installPendingUpdate(),
+    updater.installPendingUpdate(),
+  ]);
+  expect(mocks.download).toHaveBeenCalledOnce();
+});
+
+it("does not recheck or replace a downloaded update", async () => {
+  mocks.download.mockResolvedValue(undefined);
+  const updater = await updaterWithPendingUpdate();
+  await updater.installPendingUpdate();
+  expect((await updater.runUpdateFlow(false)).phase).toBe("ready");
+  expect(mocks.check).toHaveBeenCalledOnce();
+});
+
+it("retries a relaunch without installing twice", async () => {
+  mocks.download.mockResolvedValue(undefined);
+  mocks.relaunch.mockRejectedValueOnce(new Error("relaunch failed"));
+  const updater = await updaterWithPendingUpdate();
+  await updater.installPendingUpdate();
+  await updater.restartToUpdate();
+  expect(updater.getUpdaterSnapshot().phase).toBe("ready");
+  await updater.restartToUpdate();
+  expect(mocks.install).toHaveBeenCalledOnce();
+  expect(mocks.relaunch).toHaveBeenCalledTimes(2);
+});
+
+it("keeps development startup quiet and never checks the release feed", async () => {
+  vi.stubEnv("DEV", true);
+  const updater = await import("./updater");
+  await updater.initializeUpdater();
+  expect(updater.getUpdaterSnapshot()).toEqual({
+    phase: "idle",
+    currentVersion: "0.1.22",
+  });
+  expect(mocks.check).not.toHaveBeenCalled();
 });

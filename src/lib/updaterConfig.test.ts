@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 const { getVersion, check, message, ask, relaunch } = vi.hoisted(() => ({
   getVersion: vi.fn(),
@@ -17,6 +17,7 @@ vi.mock("./sounds", () => ({ announceUpdateAvailable: vi.fn() }));
 import { runUpdateFlow } from "./updater";
 
 describe("updater", () => {
+  beforeEach(() => { vi.stubEnv("DEV", false); });
   afterEach(() => {
     vi.resetAllMocks();
   });
