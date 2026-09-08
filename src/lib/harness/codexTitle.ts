@@ -20,7 +20,7 @@ export async function generateCodexSessionTitle(input: {
     });
     return parseGeneratedThreadTitle(output);
   } catch (error) {
-    console.debug("[monocode] session title", error);
+    console.debug("[jayhun] session title", error);
     return null;
   }
 }

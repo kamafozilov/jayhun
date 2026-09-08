@@ -194,9 +194,9 @@ export const CLAUDE_MODEL_CATALOG: AgentModel[] = [
   },
 ];
 
-const PROBE_ID = "monocode-claude-probe";
-const LIST_MODELS_REQUEST_ID = "monocode_list_models";
-const INIT_REQUEST_ID = "monocode_init";
+const PROBE_ID = "jayhun-claude-probe";
+const LIST_MODELS_REQUEST_ID = "jayhun_list_models";
+const INIT_REQUEST_ID = "jayhun_init";
 const DISCOVERY_TIMEOUT_MS = 15_000;
 
 const EFFORT_LABELS: Record<string, string> = {
@@ -216,7 +216,7 @@ export function refreshClaudeCatalog(): Promise<void> {
       if (models.length > 0) setHarnessModels("claude", models);
     })
     .catch((error: unknown) => {
-      console.debug("[monocode] claude catalog", error);
+      console.debug("[jayhun] claude catalog", error);
     })
     .finally(() => {
       inflight = null;
@@ -226,7 +226,7 @@ export function refreshClaudeCatalog(): Promise<void> {
 
 async function discoverClaudeModels(): Promise<AgentModel[]> {
   const listed = await discoverViaListModels().catch((error: unknown) => {
-    console.debug("[monocode] claude list_models catalog failed", error);
+    console.debug("[jayhun] claude list_models catalog failed", error);
     return [];
   });
   if (listed.length > 0) return listed;

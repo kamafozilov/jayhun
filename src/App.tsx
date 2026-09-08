@@ -510,7 +510,7 @@ function filesInWorkspaceTabs(tabs: readonly WorkspaceTab[]): FilePaneTab[] {
 
 /** Native sheet. `window.confirm` is swallowed when a macOS menu accelerator fires. */
 function confirmDiscardUnsaved(message: string): Promise<boolean> {
-  return ask(message, { title: "MonoCode", kind: "warning" });
+  return ask(message, { title: "Jayhun", kind: "warning" });
 }
 
 function titleTabsEqual(a: TitleTab[], b: TitleTab[]): boolean {
@@ -1380,7 +1380,7 @@ export default function App({
     if (!document) {
       void message(
         "Release notes for this version are not available in this build.",
-        { title: "MonoCode" },
+        { title: "Jayhun" },
       );
       return;
     }
@@ -2852,7 +2852,7 @@ export default function App({
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         void message(`Could not ${mode} this conversation.\n\n${detail}`, {
-          title: "MonoCode",
+          title: "Jayhun",
           kind: "error",
         });
         return false;
@@ -2886,7 +2886,7 @@ export default function App({
         void message(
           `Could not unarchive this conversation.\n\n${String(error)}`,
           {
-            title: "MonoCode",
+            title: "Jayhun",
             kind: "error",
           },
         );
@@ -4432,7 +4432,7 @@ export default function App({
   useEffect(() => {
     const onEscape = (event: KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null;
-      const inTerminal = Boolean(target?.closest(".monocode-terminal"));
+      const inTerminal = Boolean(target?.closest(".jayhun-terminal"));
       const activeTabId = activeTabIdRef.current;
       const sessionId = focusedBusyAgentSessionId(
         activeTabId,
@@ -4856,7 +4856,7 @@ export default function App({
         if (listNavigation) {
           const blockedTarget = Boolean(
             target?.closest(
-              'input, textarea, select, [contenteditable="true"], .cm-editor, .monocode-terminal, [role="dialog"], [data-model-picker], [data-file-picker], [data-branch-picker], [data-skill-picker], [data-mention-picker], [data-app-search]',
+              'input, textarea, select, [contenteditable="true"], .cm-editor, .jayhun-terminal, [role="dialog"], [data-model-picker], [data-file-picker], [data-branch-picker], [data-skill-picker], [data-mention-picker], [data-app-search]',
             ),
           );
           const emptyComposerTarget = Boolean(
@@ -4880,7 +4880,7 @@ export default function App({
           }
         }
         if (
-          target?.closest(".monocode-terminal") &&
+          target?.closest(".jayhun-terminal") &&
           e.ctrlKey &&
           !e.metaKey &&
           (cmd === "back" ||
@@ -4960,7 +4960,7 @@ export default function App({
       }
       if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
         const target = e.target instanceof Element ? e.target : null;
-        if (target?.closest(".monocode-terminal") && e.ctrlKey && !e.metaKey) {
+        if (target?.closest(".jayhun-terminal") && e.ctrlKey && !e.metaKey) {
           return;
         }
         e.preventDefault();

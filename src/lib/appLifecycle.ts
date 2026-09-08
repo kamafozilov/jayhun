@@ -363,7 +363,7 @@ async function confirmQuitAndExit(
       const ok = await ask(closeWindow
         ? "Close this window and stop its running chats? Other windows will stay open."
         : quitWhileBusyMessage(refs.length), {
-        title: "MonoCode",
+        title: "Jayhun",
         kind: "warning",
         okLabel: closeWindow ? "Close window" : "Quit",
       });

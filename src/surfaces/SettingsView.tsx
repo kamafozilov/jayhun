@@ -500,7 +500,7 @@ function GeneralPage({
       </Row>
       <Row
         label="Notifications"
-        description="Notify when an agent finishes or needs input in another session or while MonoCode is in the background. Click the notification to open that session."
+        description="Notify when an agent finishes or needs input in another session or while Jayhun is in the background. Click the notification to open that session."
       >
         {notificationsEnabled && notificationPermission === "denied" ? (
           <NotificationsBlocked />
@@ -744,7 +744,7 @@ function UpdateRow({
             ? "You're on the latest version."
             : snapshot.phase === "error"
               ? (snapshot.error ?? "Update check failed.")
-              : "MonoCode updates itself from the release feed.";
+              : "Jayhun updates itself from the release feed.";
 
   return (
     <Row

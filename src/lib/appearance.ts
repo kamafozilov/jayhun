@@ -2,26 +2,26 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { HAS_NATIVE_GLASS, IS_MAC } from "./platform";
 import { applyUiScale, loadUiScale } from "./uiScale";
 
-const THEME_HUE_KEY = "monocode.themeHue";
-const THEME_SATURATION_KEY = "monocode.themeSaturation";
-const OPACITY_KEY = "monocode.sidebarOpacity";
-const BLUR_KEY = "monocode.sidebarBlur";
-const PROJECT_RAIL_OPEN_KEY = "monocode.projectRailOpen";
-const BODY_KEY = "monocode.bodyGlass";
-const SCHEME_KEY = "monocode.colorScheme";
-const SIDEBAR_TAB_ORDER_KEY = "monocode.sidebarTabOrder";
-const PROJECT_RAIL_WIDTH_KEY = "monocode.projectRailWidth";
-const TRANSCRIPT_LAYOUT_KEY = "monocode.transcriptLayout";
-const TRANSCRIPT_ANCHOR_KEY = "monocode.transcriptAnchor";
-const CHAT_BACKGROUND_PATH_KEY = "monocode.chatBackgroundPath";
-const CHAT_BACKGROUND_OPACITY_KEY = "monocode.chatBackgroundOpacity";
-const CHAT_BACKGROUND_SCOPE_KEY = "monocode.chatBackgroundScope";
-const CHANGES_VIEW_KEY = "monocode.changesView";
+const THEME_HUE_KEY = "jayhun.themeHue";
+const THEME_SATURATION_KEY = "jayhun.themeSaturation";
+const OPACITY_KEY = "jayhun.sidebarOpacity";
+const BLUR_KEY = "jayhun.sidebarBlur";
+const PROJECT_RAIL_OPEN_KEY = "jayhun.projectRailOpen";
+const BODY_KEY = "jayhun.bodyGlass";
+const SCHEME_KEY = "jayhun.colorScheme";
+const SIDEBAR_TAB_ORDER_KEY = "jayhun.sidebarTabOrder";
+const PROJECT_RAIL_WIDTH_KEY = "jayhun.projectRailWidth";
+const TRANSCRIPT_LAYOUT_KEY = "jayhun.transcriptLayout";
+const TRANSCRIPT_ANCHOR_KEY = "jayhun.transcriptAnchor";
+const CHAT_BACKGROUND_PATH_KEY = "jayhun.chatBackgroundPath";
+const CHAT_BACKGROUND_OPACITY_KEY = "jayhun.chatBackgroundOpacity";
+const CHAT_BACKGROUND_SCOPE_KEY = "jayhun.chatBackgroundScope";
+const CHANGES_VIEW_KEY = "jayhun.changesView";
 let chatBackgroundRevision = Date.now();
 let nativeGlassReady = false;
 
 export const CHAT_BACKGROUND_PATH_CHANGE_EVENT =
-  "monocode:chat-background-path-change";
+  "jayhun:chat-background-path-change";
 
 export type ColorScheme = "dark" | "light";
 export type ThemePreference = ColorScheme | "system";
@@ -32,7 +32,7 @@ export type ChangesView = "list" | "tree";
 export const THEME_PREFERENCE_DEFAULT: ThemePreference = "dark";
 
 /** Fired on `window` whenever the color scheme flips (detail: ColorScheme). */
-export const SCHEME_CHANGE_EVENT = "monocode:schemechange";
+export const SCHEME_CHANGE_EVENT = "jayhun:schemechange";
 
 export const TRANSCRIPT_LAYOUT_DEFAULT: TranscriptLayout = "full";
 
@@ -41,10 +41,10 @@ export const CHANGES_VIEW_DEFAULT: ChangesView = "list";
 export const TRANSCRIPT_ANCHOR_DEFAULT = true;
 
 /** Fired on `window` whenever prompt-to-top anchoring flips (detail: boolean). */
-export const TRANSCRIPT_ANCHOR_CHANGE_EVENT = "monocode:transcriptanchorchange";
+export const TRANSCRIPT_ANCHOR_CHANGE_EVENT = "jayhun:transcriptanchorchange";
 
 /** Fired on `window` whenever the transcript layout flips (detail: TranscriptLayout). */
-export const TRANSCRIPT_LAYOUT_CHANGE_EVENT = "monocode:transcriptlayoutchange";
+export const TRANSCRIPT_LAYOUT_CHANGE_EVENT = "jayhun:transcriptlayoutchange";
 
 export type SidebarTabId = "files" | "sessions" | "changes" | "inbox";
 

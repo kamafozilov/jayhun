@@ -1,10 +1,10 @@
 import { pathKey, prettyCwd, slash } from "./paths";
 
-const KEY = "monocode.recentProjects";
-const RAIL_ORDER_KEY = "monocode.projectRailOrder";
-const RAIL_PINNED_KEY = "monocode.projectRailPinned";
-const ARCHIVED_KEY = "monocode.archivedProjects";
-const ARCHIVED_CHANGED = "monocode:archived-projects-changed";
+const KEY = "jayhun.recentProjects";
+const RAIL_ORDER_KEY = "jayhun.projectRailOrder";
+const RAIL_PINNED_KEY = "jayhun.projectRailPinned";
+const ARCHIVED_KEY = "jayhun.archivedProjects";
+const ARCHIVED_CHANGED = "jayhun:archived-projects-changed";
 const MAX = 20;
 
 export type RecentProject = {

@@ -423,6 +423,6 @@ describe("session folder persistence", () => {
   it("drops a project key when the last folder is gone", () => {
     saveSessionFolders("/tmp/project", [folder("g", ["a"])]);
     saveSessionFolders("/tmp/project", []);
-    expect(localStorage.getItem("monocode.sessionFolders")).toBe("{}");
+    expect(localStorage.getItem("jayhun.sessionFolders")).toBe("{}");
   });
 });

@@ -23,7 +23,7 @@ mod window_transfer;
 #[cfg(windows)]
 mod windows;
 
-// Phase 1 seam: spawn / kill harness children per MonoCode thread.
+// Phase 1 seam: spawn / kill harness children per Jayhun thread.
 // Adapters own the protocol; this host only supervises processes.
 
 /// Project directory for new sessions — prefer cwd, else home.
@@ -329,7 +329,7 @@ pub fn run() {
             project_logo::forget_logo_file,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building MonoCode");
+        .expect("error while building Jayhun");
 
     app.run(|handle, event| match event {
         #[cfg(target_os = "macos")]

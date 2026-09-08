@@ -35,7 +35,7 @@ export type DiscoveredSkill = {
     | "omp"
     | "fx"
     | "grok"
-    | "monocode";
+    | "jayhun";
 };
 
 export function listSkills(cwd: string): Promise<DiscoveredSkill[]> {
@@ -298,7 +298,7 @@ export function restoreSessionCheckout<
   };
 }
 
-const GIT_CHANGED = "monocode-git-changed";
+const GIT_CHANGED = "jayhun-git-changed";
 
 /** Tell git UIs (diff pane, branch picker) to reload after a local git mutation. */
 export function notifyGitChanged() {

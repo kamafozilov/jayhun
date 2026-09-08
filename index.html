@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" href="/monocode.png" />
-    <title>MonoCode</title>
+    <link rel="icon" href="/jayhun.png" />
+    <title>Jayhun</title>
     <script>
       (function () {
         try {
           var root = document.documentElement;
-          var hue = localStorage.getItem("monocode.themeHue");
-          var sat = localStorage.getItem("monocode.themeSaturation");
-          var opacity = localStorage.getItem("monocode.sidebarOpacity");
+          var hue = localStorage.getItem("jayhun.themeHue");
+          var sat = localStorage.getItem("jayhun.themeSaturation");
+          var opacity = localStorage.getItem("jayhun.sidebarOpacity");
           if (hue != null) {
             var h = Math.max(0, Math.min(360, Number(hue) || 0));
             root.style.setProperty("--theme-hue", String(h));
@@ -24,7 +24,7 @@
             var o = Math.max(0.15, Math.min(1, Number(opacity) || 0.85));
             root.style.setProperty("--sidebar-opacity", String(o));
           }
-          var scheme = localStorage.getItem("monocode.colorScheme");
+          var scheme = localStorage.getItem("jayhun.colorScheme");
           if (scheme === "system") {
             scheme = window.matchMedia("(prefers-color-scheme: light)").matches
               ? "light"
@@ -33,7 +33,7 @@
           if (scheme === "light") {
             root.classList.add("theme-light");
           }
-          var bodyGlass = localStorage.getItem("monocode.bodyGlass");
+          var bodyGlass = localStorage.getItem("jayhun.bodyGlass");
           if (bodyGlass == null || bodyGlass === "1" || bodyGlass === "true") {
             root.classList.add("glass-body");
           }
@@ -95,7 +95,7 @@
   </head>
   <body>
     <div id="boot-splash" aria-hidden="true">
-      <img src="/monocode.png" alt="" />
+      <img src="/jayhun.png" alt="" />
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

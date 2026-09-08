@@ -1867,6 +1867,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "jayhun"
+version = "0.1.40"
+dependencies = [
+ "base64 0.22.1",
+ "block2",
+ "libc",
+ "notify-rust",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "objc2-user-notifications",
+ "portable-pty",
+ "raw-window-handle",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-updater",
+ "tauri-plugin-window-state",
+ "ureq",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "jiff"
 version = "0.2.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2209,34 +2237,6 @@ checksum = "30d65c71f1ce40ab09135ce117d742b9f8a19ff91a41a8b57ed50bc2de59c427"
 dependencies = [
  "libc",
  "wasi",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "monocode"
-version = "0.1.40"
-dependencies = [
- "base64 0.22.1",
- "block2",
- "libc",
- "notify-rust",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "objc2-user-notifications",
- "portable-pty",
- "raw-window-handle",
- "rusqlite",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-updater",
- "tauri-plugin-window-state",
- "ureq",
  "windows-sys 0.61.2",
 ]
 

@@ -183,12 +183,12 @@ export const DEFAULT_MODEL_ID: Record<HarnessId, string> = {
   fx: "fx:zai/glm-5.2-fast",
 };
 
-const FAVORITES_KEY = "monocode.favoriteModels";
-const MODEL_PICKER_TAB_KEY = "monocode.modelPickerTab";
-const HIDDEN_PICKER_PROVIDERS_KEY = "monocode.hiddenPickerProviders";
-const LAST_MODEL_KEY = "monocode.lastModel";
-const LAST_MODEL_SETTINGS_KEY = "monocode.lastModelSettings";
-const DEFAULT_MODELS_KEY = "monocode.defaultModels";
+const FAVORITES_KEY = "jayhun.favoriteModels";
+const MODEL_PICKER_TAB_KEY = "jayhun.modelPickerTab";
+const HIDDEN_PICKER_PROVIDERS_KEY = "jayhun.hiddenPickerProviders";
+const LAST_MODEL_KEY = "jayhun.lastModel";
+const LAST_MODEL_SETTINGS_KEY = "jayhun.lastModelSettings";
+const DEFAULT_MODELS_KEY = "jayhun.defaultModels";
 
 export type ModelPickerTab = "favorites" | HarnessId;
 

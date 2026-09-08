@@ -8,7 +8,7 @@ import {
 } from "./notifications";
 import { newSession, type Session } from "./session";
 
-const KEY = "monocode.notifications";
+const KEY = "jayhun.notifications";
 
 function chat(patch: Partial<Session> = {}): Session {
   const session = newSession("claude", "/tmp/a");
@@ -117,7 +117,7 @@ describe("notificationText", () => {
       ],
     });
     expect(notificationText(session, "finished")).toEqual({
-      title: "MonoCode",
+      title: "Jayhun",
       subtitle: "Fix the sidebar",
       body: "Done. Sidebar fixed.",
     });
@@ -151,7 +151,7 @@ describe("notificationText", () => {
       ],
     });
     expect(notificationText(session, "needsInput")).toEqual({
-      title: "MonoCode",
+      title: "Jayhun",
       subtitle: "Fix the sidebar",
       body: "Approve: Run npm test",
     });
@@ -173,7 +173,7 @@ describe("notificationText", () => {
       },
     });
     expect(notificationText(session, "needsInput")).toEqual({
-      title: "MonoCode",
+      title: "Jayhun",
       subtitle: "Fix the sidebar",
       body: "Which database?",
     });

@@ -21,7 +21,7 @@ import {
   SOUNDS_VOLUME,
 } from "./sounds";
 
-const KEY = "monocode.sounds";
+const KEY = "jayhun.sounds";
 
 function mockLocalStorage() {
   const data = new Map<string, string>();

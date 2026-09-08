@@ -59,8 +59,8 @@ export const DEFAULT_INBOX_FILTERS: InboxFilters = {
 
 export type InboxSource = InboxProvider;
 
-const FILTERS_KEY = "monocode.inboxFilters";
-const SOURCE_KEY = "monocode.inboxSource";
+const FILTERS_KEY = "jayhun.inboxFilters";
+const SOURCE_KEY = "jayhun.inboxSource";
 
 export function loadInboxSource(): InboxSource {
   try {

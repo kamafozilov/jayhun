@@ -31,7 +31,7 @@ export type SkillSource =
   | "omp"
   | "fx"
   | "grok"
-  | "monocode";
+  | "jayhun";
 
 type SkillCommon = {
   name: string;
@@ -49,7 +49,7 @@ export type FileSkill = SkillCommon & {
 export type BuiltinSkill = SkillCommon & {
   kind: "builtin";
   scope: "builtin";
-  source: "monocode";
+  source: "jayhun";
 };
 
 export type NativeSkill = NativeCommand & {
@@ -70,7 +70,7 @@ export const BUILTIN_CREATE_SKILL: BuiltinSkill = {
   description: CREATE_SKILL_DESCRIPTION,
   invocation: CREATE_SKILL_NAME,
   scope: "builtin",
-  source: "monocode",
+  source: "jayhun",
 };
 
 const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -302,7 +302,7 @@ function asSkill(skill: DiscoveredSkill): FileSkill {
     invocation: skill.name,
     path: skill.path,
     scope: skill.scope === "user" ? "user" : "project",
-    source: skill.source === "monocode" ? "monocode" : skill.source,
+    source: skill.source === "jayhun" ? "jayhun" : skill.source,
   };
 }
 

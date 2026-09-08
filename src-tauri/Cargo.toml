@@ -1,15 +1,15 @@
 [package]
-name = "monocode"
+name = "jayhun"
 version.workspace = true
 edition.workspace = true
-description = "MonoCode — one UI for every agent harness"
-authors = ["Nick"]
-repository = "https://github.com/hardbeat920/monocode"
-homepage = "https://usemono.dev"
+description = "Desktop UI for coding agents"
+authors = ["Kamron", "Nick"]
+repository = "https://github.com/kamafozilov/jayhun"
+homepage = "https://github.com/kamafozilov/jayhun"
 license.workspace = true
 
 [lib]
-name = "monocode_lib"
+name = "jayhun_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

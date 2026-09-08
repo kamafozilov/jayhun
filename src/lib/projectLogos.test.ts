@@ -29,7 +29,7 @@ function mockLocalStorage() {
     },
     configurable: true,
   });
-  data.set("monocode:tab-group:key-version", "2");
+  data.set("jayhun:tab-group:key-version", "2");
 }
 
 /** The logo store announces changes on the window; nothing here listens. */

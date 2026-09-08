@@ -17,7 +17,7 @@ import {
 import { asRecord } from "./harness/codexProtocol";
 import { JsonRpcClient } from "./harness/jsonRpc";
 
-const USAGE_CHILD_ID = "monocode-codex-usage";
+const USAGE_CHILD_ID = "jayhun-codex-usage";
 const DISCOVERY_TIMEOUT_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 12_000;
 
@@ -99,8 +99,8 @@ export async function fetchCodexRateLimits(): Promise<ProviderRateLimits> {
           "initialize",
           {
             clientInfo: {
-              name: "monocode",
-              title: "MonoCode",
+              name: "jayhun",
+              title: "Jayhun",
               version: "0.1.0",
             },
             capabilities: { experimentalApi: true },

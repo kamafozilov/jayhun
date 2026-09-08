@@ -5,7 +5,7 @@ import { normalizeProjectPath } from "./recents";
 import { orderByIds } from "./reorder";
 import { TAB_GROUP_COLORS } from "./tabGroups";
 
-const KEY = "monocode.sessionFolders";
+const KEY = "jayhun.sessionFolders";
 
 export type SessionFolder = {
   id: string;

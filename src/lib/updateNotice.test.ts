@@ -32,9 +32,9 @@ describe("installed update marker", () => {
     "removes malformed marker %j",
     (value) => {
       const store = memoryStore();
-      store.setItem("monocode.installedUpdate", value);
+      store.setItem("jayhun.installedUpdate", value);
       expect(consumeInstalledUpdate(store)).toBeNull();
-      expect(store.getItem("monocode.installedUpdate")).toBeNull();
+      expect(store.getItem("jayhun.installedUpdate")).toBeNull();
     },
   );
 

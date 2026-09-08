@@ -21,12 +21,12 @@ import {
   saveNotesEnabled,
 } from "./settings";
 
-const KEY = "monocode.composerRunner";
-const NOTES_KEY = "monocode.notesEnabled";
-const LIVE_AGENTS_KEY = "monocode.liveAgentsEnabled";
-const GRID_ARCADE_KEY = "monocode.gridArcadeEnabled";
-const DIFF_VIEWER_KEY = "monocode.diffViewer";
-const FOLLOW_UP_BEHAVIOR_KEY = "monocode.followUpBehavior";
+const KEY = "jayhun.composerRunner";
+const NOTES_KEY = "jayhun.notesEnabled";
+const LIVE_AGENTS_KEY = "jayhun.liveAgentsEnabled";
+const GRID_ARCADE_KEY = "jayhun.gridArcadeEnabled";
+const DIFF_VIEWER_KEY = "jayhun.diffViewer";
+const FOLLOW_UP_BEHAVIOR_KEY = "jayhun.followUpBehavior";
 
 describe("follow-up behavior setting", () => {
   beforeEach(mockLocalStorage);

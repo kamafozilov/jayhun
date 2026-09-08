@@ -24,17 +24,18 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
+      - uses: Swatinem/rust-cache@v2
+
       - run: npm ci
       - run: npm test
-      - run: npx tsc --noEmit
+      - run: npm run build
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo check
       - run: cargo test

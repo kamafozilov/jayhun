@@ -2,6 +2,6 @@
 
 fn main() {
     #[cfg(all(debug_assertions, target_os = "macos"))]
-    monocode_lib::ensure_macos_dev_bundle();
-    monocode_lib::run()
+    jayhun_lib::ensure_macos_dev_bundle();
+    jayhun_lib::run()
 }

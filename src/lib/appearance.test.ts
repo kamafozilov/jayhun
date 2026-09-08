@@ -20,12 +20,12 @@ import {
   THEME_PREFERENCE_DEFAULT,
 } from "./appearance";
 
-const KEY = "monocode.transcriptLayout";
-const SCHEME_KEY = "monocode.colorScheme";
-const ANCHOR_KEY = "monocode.transcriptAnchor";
-const CHAT_BACKGROUND_PATH_KEY = "monocode.chatBackgroundPath";
-const CHAT_BACKGROUND_OPACITY_KEY = "monocode.chatBackgroundOpacity";
-const CHAT_BACKGROUND_SCOPE_KEY = "monocode.chatBackgroundScope";
+const KEY = "jayhun.transcriptLayout";
+const SCHEME_KEY = "jayhun.colorScheme";
+const ANCHOR_KEY = "jayhun.transcriptAnchor";
+const CHAT_BACKGROUND_PATH_KEY = "jayhun.chatBackgroundPath";
+const CHAT_BACKGROUND_OPACITY_KEY = "jayhun.chatBackgroundOpacity";
+const CHAT_BACKGROUND_SCOPE_KEY = "jayhun.chatBackgroundScope";
 
 function mockLocalStorage() {
   const data = new Map<string, string>();

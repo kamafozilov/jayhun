@@ -122,7 +122,7 @@ async function started(turnInput = input()) {
 }
 
 describe("OMP command lifecycle over the real RPC multiplexer", () => {
-  it("reflects command-driven model/settings and session changes in MonoCode", async () => {
+  it("reflects command-driven model/settings and session changes in Jayhun", async () => {
     const running = await started();
     frame("omp-test", {
       type: "config_update",

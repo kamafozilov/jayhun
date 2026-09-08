@@ -479,7 +479,7 @@ mod tests {
                 .as_nanos();
             let seq = TMP_SEQ.fetch_add(1, Ordering::Relaxed);
             let dir = std::env::temp_dir().join(format!(
-                "monocode-skills-{label}-{}-{stamp}-{seq}",
+                "jayhun-skills-{label}-{}-{stamp}-{seq}",
                 std::process::id()
             ));
             match std::fs::create_dir(&dir) {
@@ -529,7 +529,7 @@ mod tests {
         write_skill(
             &project.0.join(".agents/skills"),
             "ship",
-            "---\nname: ship\ndescription: MonoCode ship\n---\n",
+            "---\nname: ship\ndescription: Jayhun ship\n---\n",
         );
         write_skill(
             &project.0.join(".claude/skills"),
@@ -549,7 +549,7 @@ mod tests {
 
         let skills = list_skills_from(&project.0, Some(&home.0));
         let ship = skills.iter().find(|s| s.name == "ship").unwrap();
-        assert_eq!(ship.description, "MonoCode ship");
+        assert_eq!(ship.description, "Jayhun ship");
         assert_eq!(ship.source, "agents");
         assert_eq!(ship.scope, "project");
 

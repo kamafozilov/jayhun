@@ -67,9 +67,9 @@ describe("filterTabsForProject", () => {
 
 describe("planWorkspaceTabClose", () => {
   const sessions = [
-    session("m1", "/projects/monocode"),
+    session("m1", "/projects/jayhun"),
     session("r1", "/projects/ruler"),
-    session("m2", "/projects/monocode"),
+    session("m2", "/projects/jayhun"),
   ];
   const tabs = [tab("tm1", "m1"), tab("tr1", "r1"), tab("tm2", "m2")];
 
@@ -174,8 +174,8 @@ describe("planWorkspaceTabClose", () => {
 
 describe("applyPlaceSessionOnPane", () => {
   const sessions = [
-    session("m1", "/projects/monocode"),
-    session("m2", "/projects/monocode"),
+    session("m1", "/projects/jayhun"),
+    session("m2", "/projects/jayhun"),
     session("r1", "/projects/ruler"),
   ];
 
@@ -200,7 +200,7 @@ describe("applyPlaceSessionOnPane", () => {
   });
 
   it("replaces a blank target instead of splitting it", () => {
-    const blank = session("blank", "/projects/monocode");
+    const blank = session("blank", "/projects/jayhun");
     const next = applyPlaceSessionOnPane({
       tabs: [tab("tm1", "blank")],
       sessions: [...sessions, blank],
