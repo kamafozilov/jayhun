@@ -134,9 +134,9 @@ import { SessionsEmpty } from "./SessionsEmpty";
 import { SidebarUpdateFooter } from "./SidebarUpdate";
 import { SourceControl } from "./SourceControl";
 
-const MIN_WIDTH = 260;
+const MIN_WIDTH = 280;
 const MAX_WIDTH = 560;
-const DEFAULT_WIDTH = 260;
+const DEFAULT_WIDTH = 280;
 
 let rememberedWidth = DEFAULT_WIDTH;
 
