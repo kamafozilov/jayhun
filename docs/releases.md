@@ -20,6 +20,7 @@ The key has no passphrase; GitHub encrypts the repository secret at rest.
 For a signed local macOS build:
 
 ```bash
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD='' \
 TAURI_SIGNING_PRIVATE_KEY="$HOME/.config/jayhun/update-signing/updater.key" \
   npm run tauri build -- --bundles app
 ```
