@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
 
@@ -13,12 +13,16 @@ export function worktreeIdentity(root) {
   const git = (...args) =>
     execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
   const gitDir = normalizeGitPath(
-    realpathSync(git("rev-parse", "--absolute-git-dir")),
+    realpathSync.native(git("rev-parse", "--absolute-git-dir")),
   );
   const commonDir = normalizeGitPath(
-    realpathSync(resolve(root, git("rev-parse", "--git-common-dir"))),
+    realpathSync.native(resolve(root, git("rev-parse", "--git-common-dir"))),
   );
-  if (gitDir === commonDir) return null;
+  // Windows can expose the same directory through short names or aliases.
+  const gitStat = statSync(gitDir, { bigint: true });
+  const commonStat = statSync(commonDir, { bigint: true });
+  if (gitStat.dev === commonStat.dev && gitStat.ino === commonStat.ino)
+    return null;
   const digest = createHash("sha256").update(gitDir).digest();
   const branch =
     git("branch", "--show-current") ||
