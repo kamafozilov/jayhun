@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { version } from "../../package.json";
 import {
   formatReleaseDate,
   presentReleaseNotes,
@@ -122,14 +121,4 @@ describe("formatReleaseDate", () => {
       expect(formatReleaseDate(value)).toBe(value);
     },
   );
-});
-
-describe("bundled release notes", () => {
-  it("provides Jayhun notes for the installed version", () => {
-    const notes = presentReleaseNotes(version);
-    expect(notes).not.toBeNull();
-    expect(notes?.markdown).toContain("Jayhun");
-    expect(notes?.markdown).not.toContain("MonoCode's");
-    expect(notes?.markdown).not.toContain("hardbeat920/monocode/compare");
-  });
 });

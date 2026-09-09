@@ -6,7 +6,7 @@ Jayhun checks this public feed in packaged builds:
 
 The feed becomes available after the first draft release is published.
 Only stable, published releases are offered to installed apps. Drafts stay private.
-The update signature belongs to Jayhun, not upstream Monocode.
+Update packages are signed with Jayhun's own key.
 
 ## Signing
 

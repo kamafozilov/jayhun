@@ -1,8 +1,7 @@
 # Jayhun
 
-Jayhun is a desktop UI for coding agents, maintained by Kamron. It is a fork of
-[MonoCode](https://github.com/hardbeat920/monocode) by Nick, built with React,
-TypeScript, Tauri, and Rust.
+Jayhun is an independently maintained desktop UI for coding agents by Kamron,
+built with React, TypeScript, Tauri, and Rust.
 
 It runs installed agent CLIs, including Claude Code, Codex, Cursor, Grok Build,
 OpenCode, Pi, omp, and fx. Install and sign in to at least one provider before
@@ -99,31 +98,29 @@ packages for Apple Silicon, Intel macOS, Linux x64, and Windows x64.
 It verifies the update feed before the draft is ready to publish.
 See [Release setup](docs/releases.md) for signing, builds, and publishing.
 
-## Git workflow
+## Project development
 
-- `origin` fetches from `https://github.com/kamafozilov/jayhun.git`.
-  Pushes use `git@github.com:kamafozilov/jayhun.git` through SSH.
-- `upstream` points to `https://github.com/hardbeat920/monocode.git`.
-- Start changes from `main` on a `feat/`, `fix/`, or `chore/` branch.
-- Run the relevant checks before committing. Use Conventional Commits.
+Jayhun has its own product direction, release cycle, application identity, and
+update signing key. Building and running it does not require access to the
+original project's repository.
 
-To review upstream changes without applying them:
-
-```bash
-git fetch upstream
-git log --oneline main..upstream/main
-```
-
-Merge selected upstream changes on a separate branch and test before merging
-into `main`. Preserve the original Git history and license.
+- Develop against `main` in `https://github.com/kamafozilov/jayhun`.
+- Use focused `feat/`, `fix/`, or `chore/` branches and Conventional Commits.
+- Review and test changes before merging. See [Contributing](CONTRIBUTING.md).
+- Import external fixes only when they benefit Jayhun; follow the source and
+  license tracking procedure in [Contributing](CONTRIBUTING.md#importing-external-changes).
 
 Jayhun uses the app identifier `dev.kamafozilov.jayhun` and its own storage keys.
-It does not import existing MonoCode sessions. The source icon is `public/jayhun.svg`.
-Run `node scripts/generate-icons.mjs` on macOS to rebuild desktop icon assets.
-`CHANGELOG.md` contains Jayhun release notes. The original release history is
-preserved in `docs/upstream/monocode-changelog.md`.
+Existing data from other applications is not imported automatically.
+The source icon is `public/jayhun.svg`. Run `node scripts/generate-icons.mjs`
+on macOS to rebuild desktop icon assets.
+`CHANGELOG.md` contains Jayhun's release history.
 
-## License
+## Origin and license
+
+Jayhun began from [MonoCode](https://github.com/hardbeat920/monocode) by Nick
+and now develops independently. The original Git history and copyright notice
+are preserved. Earlier project documentation remains available in Git history.
 
 [MIT](LICENSE). The original copyright notice is retained.
 See [NOTICE](NOTICE) for attribution and provider trademark notices.

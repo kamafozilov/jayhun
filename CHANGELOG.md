@@ -6,6 +6,7 @@
 - OMP Fast mode with backend-confirmed preferences and retryable setting failures.
 
 ### Changed
+- Document independent Jayhun development and selective external fixes; retire the inherited project changelog from maintained documentation.
 - Use pinned pnpm 11.22.0 for dependency installation, development, CI, and releases.
 - Check for updates 15 seconds after startup and every four minutes in packaged builds.
 - Dismiss the installed update card after closing its release notes.
