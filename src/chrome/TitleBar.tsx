@@ -614,6 +614,10 @@ function TitleBarComponent({
     [activeId, tabs],
   );
   const systemTitle = useMemo(() => {
+    const worktree = import.meta.env.DEV
+      ? import.meta.env.VITE_JAYHUN_WORKTREE
+      : "";
+    const appTitle = worktree ? `Jayhun [${worktree}]` : "Jayhun";
     const activeName = activeTab
       ? activeTab.files[0]
         ? basename(activeTab.files[0])
@@ -621,12 +625,12 @@ function TitleBarComponent({
       : "";
     const project = cwd ? basename(cwd) : "";
     if (activeName && project && activeName !== project) {
-      return `${activeName} — ${project} — Jayhun`;
+      return `${activeName} - ${project} - ${appTitle}`;
     }
     if (project) {
-      return `${project} — Jayhun`;
+      return `${project} - ${appTitle}`;
     }
-    return "Jayhun";
+    return appTitle;
   }, [activeTab, cwd]);
 
   useEffect(() => {

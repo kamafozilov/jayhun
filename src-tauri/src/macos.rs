@@ -476,12 +476,69 @@ pub(crate) fn install_dock_menu(app: &AppHandle) {
     }
 }
 
+/// Set the store at runtime: Tauri's config macro emits a Vec for this array.
+#[cfg(debug_assertions)]
+pub(crate) fn prepare_dev_context(
+    mut context: tauri::Context<tauri::Wry>,
+) -> tauri::Context<tauri::Wry> {
+    let identifier = context.config().identifier.clone();
+    ensure_dev_bundle(&identifier);
+    if let Some(store) = worktree_data_store_identifier(&identifier) {
+        for window in &mut context.config_mut().app.windows {
+            window.data_store_identifier = Some(store);
+        }
+    }
+    context
+}
+
+#[cfg(debug_assertions)]
+fn worktree_data_store_identifier(identifier: &str) -> Option<[u8; 16]> {
+    let hex = identifier.strip_prefix("dev.kamafozilov.jayhun.worktree.w")?;
+    if hex.len() != 32 || !hex.is_ascii() {
+        return None;
+    }
+    let mut bytes = [0; 16];
+    for (index, byte) in bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16).ok()?;
+    }
+    Some(bytes)
+}
+
+#[cfg(all(test, debug_assertions))]
+mod dev_worktree_tests {
+    use super::worktree_data_store_identifier;
+
+    #[test]
+    fn store_identity_matches_worktree_and_leaves_primary_unchanged() {
+        assert_eq!(
+            worktree_data_store_identifier("dev.kamafozilov.jayhun"),
+            None
+        );
+        assert_eq!(
+            worktree_data_store_identifier(
+                "dev.kamafozilov.jayhun.worktree.w000102030405060708090a0b0c0d0e0f"
+            ),
+            Some([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+        );
+        assert_eq!(
+            worktree_data_store_identifier("dev.kamafozilov.jayhun.worktree.wbad"),
+            None
+        );
+        assert_eq!(
+            worktree_data_store_identifier(
+                "dev.kamafozilov.jayhun.worktree.wgg0102030405060708090a0b0c0d0e0f"
+            ),
+            None
+        );
+    }
+}
+
 /// `tauri dev` launches a raw binary. The Dock then skips Icon Services and
 /// paints Tauri's embedded icns edge-to-edge. Wrap that binary in a real
 /// `.app` so macOS applies the plate, mask, and padding.
 #[cfg(debug_assertions)]
-pub(crate) fn ensure_dev_bundle() {
-    if let Err(err) = relaunch_from_dev_bundle() {
+pub(crate) fn ensure_dev_bundle(identifier: &str) {
+    if let Err(err) = relaunch_from_dev_bundle(identifier) {
         eprintln!("jayhun: macos dev bundle: {err}");
     }
 }
@@ -520,7 +577,7 @@ fn current_exe_is_bundled() -> bool {
 }
 
 #[cfg(debug_assertions)]
-fn relaunch_from_dev_bundle() -> Result<(), String> {
+fn relaunch_from_dev_bundle(identifier: &str) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::process::CommandExt;
     use std::process::Command;
@@ -533,14 +590,14 @@ fn relaunch_from_dev_bundle() -> Result<(), String> {
             .and_then(|p| p.parent())
             .ok_or("missing bundle root")?
             .to_path_buf();
-        write_dev_bundle_icons(&app)?;
+        write_dev_bundle_icons(&app, identifier)?;
         return Ok(());
     }
 
     let app = exe.parent().ok_or("missing exe parent")?.join("Jayhun.app");
     let macos_dir = app.join("Contents/MacOS");
     std::fs::create_dir_all(&macos_dir).map_err(|e| e.to_string())?;
-    write_dev_bundle_icons(&app)?;
+    write_dev_bundle_icons(&app, identifier)?;
 
     let bundled = macos_dir.join("jayhun");
     let _ = std::fs::remove_file(&bundled);
@@ -557,7 +614,7 @@ fn relaunch_from_dev_bundle() -> Result<(), String> {
     // UNUserNotificationCenter refuses authorization, without prompting,
     // unless the signing identifier matches CFBundleIdentifier.
     let signed = Command::new("/usr/bin/codesign")
-        .args(["--force", "--sign", "-", "--identifier", DEV_BUNDLE_ID])
+        .args(["--force", "--sign", "-", "--identifier", identifier])
         .arg(&app)
         .status()
         .map(|status| status.success())
@@ -573,10 +630,14 @@ fn relaunch_from_dev_bundle() -> Result<(), String> {
 }
 
 #[cfg(debug_assertions)]
-fn write_dev_bundle_icons(app: &std::path::Path) -> Result<(), String> {
+fn write_dev_bundle_icons(app: &std::path::Path, identifier: &str) -> Result<(), String> {
     let resources = app.join("Contents/Resources");
     std::fs::create_dir_all(&resources).map_err(|e| e.to_string())?;
-    std::fs::write(app.join("Contents/Info.plist"), DEV_BUNDLE_PLIST).map_err(|e| e.to_string())?;
+    std::fs::write(
+        app.join("Contents/Info.plist"),
+        DEV_BUNDLE_PLIST.replace(DEV_BUNDLE_ID, identifier),
+    )
+    .map_err(|e| e.to_string())?;
     std::fs::write(resources.join("AppIcon.icns"), DEV_ICNS).map_err(|e| e.to_string())?;
     // Remove the inherited asset catalog from existing development bundles.
     let legacy_assets = resources.join("Assets.car");
@@ -595,7 +656,7 @@ const DEV_BUNDLE_ID: &str = "dev.kamafozilov.jayhun";
 #[cfg(debug_assertions)]
 const DEV_ICNS: &[u8] = include_bytes!("../icons/icon.icns");
 #[cfg(debug_assertions)]
-const DEV_BUNDLE_PLIST: &[u8] = br#"<?xml version="1.0" encoding="UTF-8"?>
+const DEV_BUNDLE_PLIST: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>

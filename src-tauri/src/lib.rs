@@ -160,6 +160,9 @@ fn open_new_window(app: tauri::AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    #[cfg(all(debug_assertions, target_os = "macos"))]
+    let context = macos::prepare_dev_context(context);
     #[cfg(windows)]
     windows::initialize().expect("Failed to initialize Windows process safety");
     let app = tauri::Builder::default()
@@ -330,7 +333,7 @@ pub fn run() {
             project_logo::remove_project_logo,
             project_logo::forget_logo_file,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building Jayhun");
 
     app.run(|handle, event| match event {
@@ -390,9 +393,4 @@ fn reap_harness_children(handle: &tauri::AppHandle) {
     if let Some(host) = handle.try_state::<pty::PtyHost>() {
         host.kill_all();
     }
-}
-
-#[cfg(all(debug_assertions, target_os = "macos"))]
-pub fn ensure_macos_dev_bundle() {
-    macos::ensure_dev_bundle();
 }
