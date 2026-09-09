@@ -184,8 +184,10 @@ import {
 import { notifyDirsChanged } from "./lib/fileTree";
 import { nudgeWatchedFiles } from "./lib/fileWatch";
 import { type EditorNavigationTarget, type OpenFileFn } from "./lib/search";
+import { useLegacyCodexIdentityRecovery } from "./hooks/useLegacyCodexIdentityRecovery";
+import { activeTurnIdentity, requestedTurnIdentity } from "./lib/turnIdentity";
 import {
-  mergeModelSettings,
+  modelSelectionError,
   preferredModelSettings,
   resolveModel,
   saveLastModelSettings,
@@ -655,6 +657,7 @@ export default function App({
   /** Project whose listing failed, so the error cannot leak to another one. */
   const [historyErrorCwd, setHistoryErrorCwd] = useState<string | null>(null);
 
+  useLegacyCodexIdentityRecovery(sessions, setSessions);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
   const queueDispatchingRef = useRef(new Set<string>());
@@ -843,25 +846,7 @@ export default function App({
     const harnesses = [
       ...new Set(sessionsRef.current.map((session) => session.harness)),
     ];
-    void refreshHarnessCatalogs(harnesses).then(() => {
-      setSessions((prev) =>
-        prev.map((session) => {
-          if (!isLiveHarness(session.harness)) return session;
-          const resolved = resolveModel(session.harness, session.model);
-          const modelSettings = mergeModelSettings(
-            resolved,
-            session.modelSettings,
-          );
-          if (
-            resolved.id === session.model &&
-            sameSettings(modelSettings, session.modelSettings)
-          ) {
-            return session;
-          }
-          return { ...session, model: resolved.id, modelSettings };
-        }),
-      );
-    });
+    void refreshHarnessCatalogs(harnesses);
   }, []);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
@@ -3570,8 +3555,19 @@ export default function App({
           flushHarnessEvents();
           return;
         }
+        const activeIdentity = activeTurnIdentity(current);
+        if (!activeIdentity?.requestedModel) {
+          enqueueHarnessEvent(sessionId, {
+            type: "status",
+            text: "The active turn has no recorded model. Stop it before sending a new request.",
+          });
+          flushHarnessEvents();
+          return;
+        }
         const visible = displayAttachments(attachments);
-        const cards = userTurnCards(noteCard);
+        const activeModel = activeIdentity.requestedModel;
+        const steerGen = turnGen.current.get(sessionId);
+        const cards = { ...userTurnCards(noteCard), turnIdentity: activeIdentity };
         setSessions((prev) =>
           prev.map((s) => {
             if (s.id !== sessionId) return s;
@@ -3595,16 +3591,28 @@ export default function App({
               sessionId,
               cwd: workCwd,
             });
+            if (
+              turnGen.current.get(sessionId) !== steerGen ||
+              !sessionsRef.current.find((s) => s.id === sessionId)?.busy
+            ) {
+              enqueueHarnessEvent(sessionId, {
+                type: "status",
+                text: "The follow-up was not sent because the active turn ended.",
+              });
+              flushHarnessEvents();
+              return;
+            }
             await steerHarnessTurn({
-              harness: current.harness,
+              harness: activeIdentity.harness,
               sessionId,
               cwd: workCwd,
-              model: current.model,
-              modelSettings: current.modelSettings,
+              model: activeModel,
+              modelSettings: activeIdentity.modelSettings,
               text: inboxAskPrompt(rawCommand ? undefined : current.inboxAsk, prompt),
               attachments: prepared,
             });
           } catch (error: unknown) {
+            if (turnGen.current.get(sessionId) !== steerGen) return;
             const message =
               error instanceof Error
                 ? error.message
@@ -3616,6 +3624,26 @@ export default function App({
             flushHarnessEvents();
           }
         })();
+        return;
+      }
+
+      const selectionError = modelSelectionError(current.harness, current.model);
+      if (selectionError) {
+        setSessions((prev) =>
+          prev.map((session) => {
+            if (session.id !== sessionId) return session;
+            return applyHarnessEvent({
+              ...session,
+              queueStatus: "paused",
+              queuedMessages: options?.queuedMessageId || intent === "build"
+                ? session.queuedMessages
+                : [
+                    ...(session.queuedMessages ?? []),
+                    { id: crypto.randomUUID(), text, attachments, noteCard, handoffCard, intent },
+                  ],
+            }, { type: "status", text: selectionError });
+          }),
+        );
         return;
       }
 
@@ -3644,7 +3672,11 @@ export default function App({
           : card
             ? SECOND_OPINION_TITLE
             : submittedText;
-      const cards = rawCommand ? undefined : userTurnCards(noteCard, card);
+      const identity = requestedTurnIdentity(current);
+      const cards = {
+        ...(rawCommand ? {} : userTurnCards(noteCard, card)),
+        turnIdentity: identity,
+      };
       const live = isLiveHarness(current.harness);
       const queuedHandoff =
         live && !pendingSwitch ? pendingHandoff(current) : null;
@@ -3844,11 +3876,12 @@ export default function App({
             ? userMessagesAfterHandoff(current)
             : [];
           await sendHarnessTurn({
-            harness: current.harness,
+            turnId: identity.id,
+            harness: identity.harness,
             sessionId,
             cwd: workCwd,
-            model: current.model,
-            modelSettings: current.modelSettings,
+            model: identity.requestedModel,
+            modelSettings: identity.modelSettings,
             runtimeMode: current.runtimeMode,
             intent,
             text: inboxAskPrompt(rawCommand ? undefined : current.inboxAsk, wrap && !rawCommand
@@ -5749,17 +5782,4 @@ function nudgeOpenEditors(event: HarnessEvent, cwd: string) {
     notifyGitChanged();
     nudgeWorkspace(cwd);
   }
-}
-
-function sameSettings(
-  a: Record<string, string> | undefined,
-  b: Record<string, string> | undefined,
-): boolean {
-  const left = a ?? {};
-  const right = b ?? {};
-  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
-  for (const key of keys) {
-    if (left[key] !== right[key]) return false;
-  }
-  return true;
 }

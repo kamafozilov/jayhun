@@ -2,6 +2,7 @@ use tauri::Manager;
 
 mod chat_background;
 mod checkpoint;
+mod codex_history;
 mod cursor_store;
 mod fs;
 mod harness;
@@ -195,6 +196,7 @@ pub fn run() {
             menu::dispatch(app, event.id().as_ref());
         })
         .invoke_handler(tauri::generate_handler![
+            codex_history::recover_codex_turn_identities,
             default_cwd,
             home_dir,
             notifications::notification_permission,

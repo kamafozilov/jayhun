@@ -41,6 +41,93 @@ describe("harness registry", () => {
     vi.useRealTimers();
   });
 
+  it("sends an exact cold-catalog selection and rejects unavailable models without substitution", async () => {
+    const sendTurn = vi.fn(async () => undefined);
+    registerHarness(stub("codex", { sendTurn }));
+    const input = {
+      harness: "codex" as const,
+      sessionId: "exact",
+      cwd: "/tmp",
+      model: "codex:gpt-5.6-sol",
+      text: "Hi",
+      runtimeMode: "supervised" as const,
+      onEvent: () => undefined,
+    };
+    await sendHarnessTurn(input);
+    expect(sendTurn).toHaveBeenLastCalledWith(input);
+    setHarnessModels("codex", [
+      { id: "codex:gpt-6-astra", harness: "codex", name: "Astra" },
+    ]);
+    await expect(sendHarnessTurn(input)).rejects.toThrow("unavailable");
+    expect(sendTurn).toHaveBeenCalledOnce();
+    resetHarnessModelOverlays();
+    await expect(
+      sendHarnessTurn({ ...input, model: "claude:sonnet-5" }),
+    ).rejects.toThrow("does not belong");
+    await expect(sendHarnessTurn({ ...input, model: "" })).rejects.toThrow(
+      "Choose a model",
+    );
+    expect(sendTurn).toHaveBeenCalledOnce();
+  });
+
+  it("permits exact native aliases without rewriting the selected ID", async () => {
+    const sendTurn = vi.fn(async () => undefined);
+    registerHarness(stub("claude", { sendTurn }));
+    setHarnessModels("claude", [
+      {
+        id: "claude:sonnet-5",
+        harness: "claude",
+        name: "Sonnet",
+        nativeId: "claude-sonnet-5",
+      },
+    ]);
+    const input = {
+      harness: "claude" as const,
+      sessionId: "alias",
+      cwd: "/tmp",
+      model: "claude:claude-sonnet-5",
+      text: "Hi",
+      runtimeMode: "supervised" as const,
+      onEvent: () => undefined,
+    };
+    await sendHarnessTurn(input);
+    expect(sendTurn).toHaveBeenLastCalledWith(input);
+    await expect(
+      sendHarnessTurn({ ...input, model: "claude:claude-sonnet" }),
+    ).rejects.toThrow("unavailable");
+  });
+
+  it("keeps exact send identity after catalog discovery fails", async () => {
+    const sendTurn = vi.fn(async () => undefined);
+    const debug = vi
+      .spyOn(console, "debug")
+      .mockImplementation(() => undefined);
+    registerHarness(
+      stub("codex", {
+        sendTurn,
+        refreshCatalog: async () => {
+          throw new Error("offline");
+        },
+      }),
+    );
+    try {
+      await refreshHarnessCatalogs(["codex"]);
+      const input = {
+        harness: "codex" as const,
+        sessionId: "offline",
+        cwd: "/tmp",
+        model: "codex:gpt-5.6-sol",
+        text: "Hi",
+        runtimeMode: "supervised" as const,
+        onEvent: () => undefined,
+      };
+      await sendHarnessTurn(input);
+      expect(sendTurn).toHaveBeenLastCalledWith(input);
+    } finally {
+      debug.mockRestore();
+    }
+  });
+
   it("tracks live adapters", () => {
     registerHarness(stub("cursor"));
     registerHarness(stub("codex"));

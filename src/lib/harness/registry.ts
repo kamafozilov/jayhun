@@ -1,6 +1,6 @@
 import type { HarnessId } from "../session";
 import type { PrContent } from "../gitText";
-import { hasLiveCatalog } from "../models";
+import { hasLiveCatalog, modelSelectionError } from "../models";
 import type { UserQuestionReply } from "../userQuestion";
 import type { NativeCommandProvider } from "./nativeCommands";
 import type {
@@ -127,6 +127,8 @@ export async function sendHarnessTurn(
   if (!adapter.live) {
     throw new Error(`${input.harness} is not connected yet`);
   }
+  const selectionError = modelSelectionError(input.harness, input.model);
+  if (selectionError) throw new Error(selectionError);
   cancelIdlePark(input.sessionId);
   try {
     await adapter.sendTurn(input);

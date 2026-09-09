@@ -20,6 +20,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
@@ -47,7 +48,8 @@ import { copyText } from "../lib/clipboard";
 import { playCue } from "../lib/sounds";
 import { legacyTaskListFromText } from "../lib/taskList";
 import { displayPath, resolveWorkspacePath } from "../lib/paths";
-import { resolveModel } from "../lib/models";
+import { subscribeModels, getModelSnapshot } from "../lib/models";
+import { turnModelName } from "../lib/turnIdentity";
 import { harnessForTurn } from "../lib/secondOpinion";
 import { Shimmer } from "./Shimmer";
 import {
@@ -185,7 +187,7 @@ function AgentTranscriptComponent({
     seenUserId.current = lastUserId;
     if (lastUserId && !anchorTurn) setAnchorTurn(true);
   }
-  const modelName = harness ? resolveModel(harness, model).name : undefined;
+  useSyncExternalStore(subscribeModels, getModelSnapshot, getModelSnapshot);
   const waitingForApproval = hasPendingApproval(blocks) || pendingQuestion;
   const preparingHandoff = blocks.some(
     (block) =>
@@ -377,6 +379,7 @@ function AgentTranscriptComponent({
         {visibleTurns.map((turn, turnIndex) => {
           const isLastTurn = firstVisibleTurn + turnIndex === turns.length - 1;
           const userBlock = turnUserBlock(turn);
+          const modelName = turnModelName(userBlock?.turnIdentity);
           const durationMs = userBlock?.durationMs;
           const settled = !(busy && isLastTurn);
           const items = groupTurnItems(turn);
@@ -396,9 +399,10 @@ function AgentTranscriptComponent({
                 (item) => item.type === "block" && isProseBlock(item.block),
               );
           const workStillRunning = activityStillRunning(turn);
-          const turnHarness = harness
-            ? harnessForTurn(blocks, turn, harness)
-            : undefined;
+          const turnHarness = userBlock?.turnIdentity?.harness ??
+            (harness && blocks.some((block) => block.handoff)
+              ? harnessForTurn(blocks, turn, harness)
+              : undefined);
           // Work the turn has already answered for folds away behind one line,
           // leaving the prompt and the answer to it.
           const turnId = turn[0].id;

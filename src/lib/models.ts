@@ -298,29 +298,53 @@ export function findModel(id: string): AgentModel | undefined {
   return indexById.get(id);
 }
 
+/** Resolve a selection without replacing a saved ID with a catalog default. */
 export function resolveModel(harness: HarnessId, id?: string): AgentModel {
-  const available = modelsFor(harness);
-  if (id) {
-    const exact = findModel(id);
-    if (exact && exact.harness === harness) return exact;
-    const slug = nativeIdFrom(id);
-    const byNative = available.find(
-      (model) => (model.nativeId ?? nativeIdFrom(model.id)) === slug,
-    );
-    if (byNative) return byNative;
-    const prefix = available.find((model) => {
-      const native = model.nativeId ?? nativeIdFrom(model.id);
-      return native.startsWith(slug) || slug.startsWith(native);
-    });
-    if (prefix) return prefix;
-  }
-  const fallbackId = defaultModelId(harness);
+  const selected = id ?? defaultModelId(harness);
+  const exact = findModel(selected);
+  if (exact?.harness === harness) return exact;
+  return { id: selected, harness, name: selected || "No model selected" };
+}
+
+/** Historical labels use only the exact recorded ID. */
+export function modelIdentityName(harness: HarnessId, id: string): string {
+  const exact = findModel(id);
+  if (exact?.harness === harness) return exact.name;
+  const native = id.startsWith(`${harness}:`)
+    ? id.slice(harness.length + 1)
+    : id;
   return (
-    (fallbackId ? findModel(fallbackId) : undefined) ??
-    available[0] ??
-    MODELS.find((model) => model.harness === harness) ??
-    MODELS[0]
+    modelsFor(harness).find(
+      (model) => (model.nativeId ?? nativeIdFrom(model.id)) === native,
+    )?.name ?? id
   );
+}
+
+export function modelSelectionError(
+  harness: HarnessId,
+  id: string,
+): string | undefined {
+  if (!id.trim()) return "Choose a model before sending.";
+  const prefix = id.includes(":") ? id.slice(0, id.indexOf(":")) : undefined;
+  if (
+    prefix &&
+    HARNESS_ORDER.includes(prefix as HarnessId) &&
+    prefix !== harness
+  ) {
+    return `Model ${id} does not belong to ${harness}. Choose a model before sending.`;
+  }
+  if (
+    hasLiveCatalog(harness) &&
+    !modelsFor(harness).some(
+      (model) =>
+        model.id === id ||
+        (model.nativeId ?? nativeIdFrom(model.id)) === nativeIdFrom(id),
+    )
+  ) {
+    return `Model ${id} is unavailable in the current catalog. Choose a model before sending.`;
+  }
+  // With no catalog, send the exact selection and let the provider validate it.
+  return undefined;
 }
 
 /** Catalog-reported context window for a model id, when known. */

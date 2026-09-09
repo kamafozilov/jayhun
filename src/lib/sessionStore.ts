@@ -335,6 +335,51 @@ function sanitizeBlock(block: Block): Block | null {
   if (block.attachments?.length) {
     next.attachments = block.attachments.map(persistableAttachment);
   }
+  const identity = block.turnIdentity;
+  if (
+    identity &&
+    typeof identity.id === "string" &&
+    HARNESSES.includes(identity.harness) &&
+    (typeof identity.requestedModel === "string" ||
+      typeof identity.providerModel === "string")
+  ) {
+    next.turnIdentity = {
+      id: identity.id,
+      harness: identity.harness,
+      ...(typeof identity.requestedModel === "string"
+        ? { requestedModel: identity.requestedModel }
+        : {}),
+      ...(identity.recovery?.source === "codex-rollout-time-match" &&
+      typeof identity.recovery.providerSessionId === "string" &&
+      Number.isFinite(identity.recovery.providerStartedAt)
+        ? {
+            recovery: {
+              source: identity.recovery.source,
+              providerSessionId: identity.recovery.providerSessionId,
+              providerStartedAt: identity.recovery.providerStartedAt,
+            },
+          }
+        : {}),
+      ...(identity.modelSettings && typeof identity.modelSettings === "object"
+        ? {
+            modelSettings: Object.fromEntries(
+              Object.entries(identity.modelSettings).filter(
+                ([, value]) => typeof value === "string",
+              ),
+            ),
+          }
+        : {}),
+      ...(typeof identity.providerModel === "string" && identity.providerModel
+        ? { providerModel: identity.providerModel }
+        : {}),
+      ...(typeof identity.providerSessionId === "string" && identity.providerSessionId
+        ? { providerSessionId: identity.providerSessionId }
+        : {}),
+      ...(typeof identity.providerTurnId === "string" && identity.providerTurnId
+        ? { providerTurnId: identity.providerTurnId }
+        : {}),
+    };
+  }
   if (block.startedAt != null) next.startedAt = block.startedAt;
   if (block.durationMs != null) next.durationMs = block.durationMs;
   if (block.tool) next.tool = block.tool;
