@@ -5,6 +5,7 @@ import type {
   TaskListItem,
   ToolPreview,
 } from "../session";
+import { activeTurnIdentity, requestedTurnIdentity } from "../turnIdentity";
 import { mergeContextUsage } from "../contextUsage";
 import { displayPath } from "../paths";
 import {
@@ -24,6 +25,30 @@ export function applyHarnessEvent(
   event: HarnessEvent,
 ): Session {
   switch (event.type) {
+    case "turn.identity":
+      return {
+        ...session,
+        blocks: session.blocks.map((block) => {
+          const identity = block.turnIdentity;
+          if (!identity || identity.id !== event.turnId) return block;
+          return {
+            ...block,
+            turnIdentity: {
+              ...identity,
+              ...(event.providerSessionId && !identity.providerSessionId
+                ? { providerSessionId: event.providerSessionId }
+                : {}),
+              ...(event.providerTurnId && !identity.providerTurnId
+                ? { providerTurnId: event.providerTurnId }
+                : {}),
+              ...(event.providerModel && !identity.providerModel
+                ? { providerModel: event.providerModel }
+                : {}),
+            },
+          };
+        }),
+      };
+
     case "message.delta":
       return patchStreaming(session, "assistant", event.text, true);
     case "message.completed":
@@ -102,7 +127,12 @@ export function applyHarnessEvent(
         ...session,
         ...(event.model ? { model: event.model } : {}),
         ...(event.modelSettings
-          ? { modelSettings: { ...session.modelSettings, ...event.modelSettings } }
+          ? {
+              modelSettings: {
+                ...session.modelSettings,
+                ...event.modelSettings,
+              },
+            }
           : {}),
       };
     case "status":
@@ -280,6 +310,7 @@ function lastMatchingBlock(
 }
 
 type UserTurnExtra = {
+  turnIdentity?: Block["turnIdentity"];
   secondOpinion?: Block["secondOpinion"];
   noteCard?: Block["noteCard"];
 };
@@ -304,6 +335,7 @@ export function appendUser(
       role: "user",
       text,
       startedAt: Date.now(),
+      turnIdentity: extra?.turnIdentity ?? requestedTurnIdentity(session),
       ...(attachments.length > 0 ? { attachments } : {}),
       ...userTurnFields(extra),
     },
@@ -326,6 +358,7 @@ export function appendSteerUser(
         id: crypto.randomUUID(),
         role: "user",
         text,
+        turnIdentity: extra?.turnIdentity ?? activeTurnIdentity(session),
         ...(attachments.length > 0 ? { attachments } : {}),
         ...userTurnFields(extra),
       },

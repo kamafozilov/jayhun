@@ -65,13 +65,16 @@ async function startTurn(
   options: {
     runtimeMode?: RuntimeMode;
     intent?: TurnIntent;
+    model?: string;
+    turnId?: string;
   } = {},
 ) {
   const events: HarnessEvent[] = [];
   const turn = sendCodexTurn({
     sessionId,
     cwd: "/repo",
-    model: "codex:gpt-5.4",
+    model: options.model ?? "codex:gpt-5.4",
+    turnId: options.turnId,
     modelSettings: {},
     runtimeMode: options.runtimeMode ?? "supervised",
     intent: options.intent,
@@ -487,5 +490,85 @@ describe("codex live turn sequence", () => {
     });
     await compact;
     expect(settled).toBe(true);
+  });
+
+  it("sends an exact selected model and records only the returned turn identity", async () => {
+    const { events, turn } = await startTurn("codex-live", {
+      model: "codex:gpt-5.6-sol",
+      turnId: "dispatch-1",
+    });
+    const messages = parse();
+    expect(
+      messages.find((m) => m.method === "thread/start")?.params,
+    ).toMatchObject({ model: "gpt-5.6-sol" });
+    expect(
+      messages.find((m) => m.method === "turn/start")?.params,
+    ).toMatchObject({ model: "gpt-5.6-sol" });
+    await waitFor(
+      () => events.some((event) => event.type === "turn.identity"),
+      "turn identity",
+    );
+    expect(events.find((event) => event.type === "turn.identity")).toEqual({
+      type: "turn.identity",
+      turnId: "dispatch-1",
+      providerTurnId: "turn_1",
+      providerSessionId: "thr_1",
+    });
+    notify("turn/completed", { turn: { id: "turn_1", status: "completed" } });
+    await turn;
+  });
+  it("resumes an interrupted session with the newly selected exact model", async () => {
+    const first = await startTurn("codex-live", {
+      model: "codex:gpt-5.6-sol",
+      turnId: "first",
+    });
+    await stopCodexSession("codex-live");
+    await first.turn.catch(() => undefined);
+    sent.length = 0;
+    const events: HarnessEvent[] = [];
+    const resumed = sendCodexTurn({
+      sessionId: "codex-live",
+      cwd: "/repo",
+      model: "codex:gpt-6-astra",
+      turnId: "second",
+      runtimeMode: "supervised",
+      text: "Continue",
+      attachments: [],
+      onEvent: (event) => events.push(event),
+    });
+    await waitFor(
+      () => parse().some((m) => m.method === "initialize"),
+      "resume initialize",
+    );
+    reply(parse().find((m) => m.method === "initialize")!.id as number, {});
+    await waitFor(
+      () => parse().some((m) => m.method === "thread/resume"),
+      "thread/resume",
+    );
+    const resume = parse().find((m) => m.method === "thread/resume")!;
+    expect(resume.params).toMatchObject({
+      threadId: "thr_1",
+      model: "gpt-6-astra",
+    });
+    reply(resume.id as number, { thread: { id: "thr_1" } });
+    await waitFor(
+      () => parse().some((m) => m.method === "turn/start"),
+      "resumed turn/start",
+    );
+    const start = parse().find((m) => m.method === "turn/start")!;
+    expect(start.params).toMatchObject({ model: "gpt-6-astra" });
+    reply(start.id as number, { turn: { id: "turn_2" } });
+    await waitFor(
+      () => events.some((event) => event.type === "turn.identity"),
+      "resumed identity",
+    );
+    expect(events.find((event) => event.type === "turn.identity")).toEqual({
+      type: "turn.identity",
+      turnId: "second",
+      providerTurnId: "turn_2",
+      providerSessionId: "thr_1",
+    });
+    notify("turn/completed", { turn: { id: "turn_2", status: "completed" } });
+    await resumed;
   });
 });

@@ -8,6 +8,13 @@ import type {
 import type { UserQuestion } from "../userQuestion";
 
 export type HarnessEvent =
+  | {
+      type: "turn.identity";
+      turnId: string;
+      providerTurnId?: string;
+      providerSessionId?: string;
+      providerModel?: string;
+    }
   | { type: "session.started" }
   | { type: "session.ended"; code?: number | null }
   | { type: "session.error"; message: string }
@@ -103,6 +110,7 @@ export type HarnessSessionInput = {
 };
 
 export type SendTurnInput = HarnessSessionInput & {
+  turnId?: string;
   text: string;
   attachments?: Attachment[];
 };
