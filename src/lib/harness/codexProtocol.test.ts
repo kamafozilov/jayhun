@@ -11,6 +11,53 @@ import {
 } from "./codexProtocol";
 import { parseCodexModelList } from "./codexCatalog";
 
+const skillsBudgetWarning =
+  "Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest.";
+
+describe("Codex skills budget warning", () => {
+  it.each(["warning", "configWarning"])(
+    "silences repeated %s notifications",
+    (method) => {
+      for (const threadId of ["first", "second"]) {
+        for (const field of ["summary", "message", "details"]) {
+          expect(
+            mapCodexNotification(method, {
+              threadId,
+              [field]: skillsBudgetWarning,
+            }).events,
+          ).toEqual([]);
+        }
+      }
+    },
+  );
+
+  it.each(["warning", "configWarning"])(
+    "preserves other %s messages",
+    (method) => {
+      for (const message of [
+        "Skills failed to load.",
+        `${skillsBudgetWarning} Another error occurred.`,
+      ]) {
+        expect(mapCodexNotification(method, { message }).events).toEqual([
+          { type: "status", text: message },
+        ]);
+      }
+    },
+  );
+
+  it("does not silence errors or retries with the same text", () => {
+    expect(
+      mapCodexNotification("error", { message: skillsBudgetWarning }).events,
+    ).toEqual([{ type: "session.error", message: skillsBudgetWarning }]);
+    expect(
+      mapCodexNotification("error", {
+        message: skillsBudgetWarning,
+        willRetry: true,
+      }).events,
+    ).toEqual([{ type: "status", text: skillsBudgetWarning }]);
+  });
+});
+
 describe("runtimeModeToCodexConfig", () => {
   it("maps supervised to untrusted read-only", () => {
     expect(runtimeModeToCodexConfig("supervised")).toEqual({

@@ -36,6 +36,7 @@ import { SecondOpinionCard } from "../chrome/SecondOpinionCard";
 import { NoteMiniCard } from "../chrome/NoteMiniCard";
 import { TerminalSpinner } from "../chrome/TerminalSpinner";
 import type { ApprovalDecision } from "../lib/harness";
+import { isCodexSkillsBudgetWarning } from "../lib/harness/codexWarnings";
 import {
   isEditTool,
   isReadTool,
@@ -124,7 +125,7 @@ type Props = {
 };
 
 function AgentTranscriptComponent({
-  blocks,
+  blocks: savedBlocks,
   busy,
   cwd,
   harness,
@@ -144,6 +145,16 @@ function AgentTranscriptComponent({
   onRevealReady,
   visible = true,
 }: Props) {
+  // Older sessions saved this Codex notice as a system block without provider
+  // metadata. Exclude it before grouping so it leaves no empty transcript rows.
+  const blocks = useMemo(
+    () =>
+      savedBlocks.filter(
+        (block) =>
+          block.role !== "system" || !isCodexSkillsBudgetWarning(block.text),
+      ),
+    [savedBlocks],
+  );
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const scroller = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);

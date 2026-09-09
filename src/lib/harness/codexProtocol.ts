@@ -11,6 +11,7 @@ import {
   formatAgentType,
 } from "./preview";
 import { streamTextDelta } from "./streamText";
+import { isCodexSkillsBudgetWarning } from "./codexWarnings";
 import type { HarnessEvent } from "./types";
 
 /** Codex approval / sandbox settings for thread/start and turn/start. */
@@ -343,6 +344,7 @@ export function mapCodexNotification(
       stringField(rec, "message") ??
       stringField(rec, "details");
     if (!message) return { events: [] };
+    if (isCodexSkillsBudgetWarning(message)) return { events: [] };
     return { events: [{ type: "status", text: message }] };
   }
 
