@@ -1,3 +1,4 @@
+import { useInboxItemSeen } from "../hooks/useInboxItemSeen";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   CheckCheck,
@@ -47,6 +48,8 @@ import {
   inboxItemRef,
   inboxItemStatus,
   inboxListIsFresh,
+  inboxListCacheKey,
+  subscribeInboxList,
   inboxProjectsForRail,
   listInboxItems,
   peekGithubPrDiff,
@@ -353,6 +356,15 @@ export function InboxView({
     [activeFilters.assignedToMe, fetchState, linearHiddenTeamIds],
   );
 
+  useEffect(() => {
+    const key = inboxListCacheKey(projects, fetchQuery);
+    return subscribeInboxList((updatedKey, result) => {
+      if (updatedKey !== key || Object.keys(result.errors).length > 0) return;
+      setItems(result.items);
+      setProviderErrors(result.errors);
+    });
+  }, [projects, fetchQuery]);
+
   const resize = useDragResize({
     min: MIN_WIDTH,
     max: () => Math.min(MAX_WIDTH, Math.round(window.innerWidth * 0.5)),
@@ -485,6 +497,12 @@ export function InboxView({
     const key = inboxItemKey(selected);
     if (key !== selectedKey) setSelectedKey(key);
   }, [selected, selectedKey]);
+
+  useInboxItemSeen(
+    selected
+      ? { key: inboxItemKey(selected), updatedAt: selected.updatedAt }
+      : undefined,
+  );
 
   const onFiltersChange = (next: InboxFilters) => {
     const pruned = pruneInboxFilters(

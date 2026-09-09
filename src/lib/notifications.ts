@@ -1,6 +1,12 @@
+import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { HARNESS_TITLE, sessionDisplayTitle, type Session } from "./session";
-import { loadSoundsEnabled } from "./sounds";
+import {
+  HARNESS_TITLE,
+  sessionDisplayTitle,
+  sessionNeedsInput,
+  type Session,
+} from "./session";
+import { loadSoundsEnabled, playCue } from "./sounds";
 
 const KEY = "jayhun.notifications";
 
@@ -13,10 +19,7 @@ export const NOTIFICATIONS_CHANGE_EVENT = "jayhun:notifications-change";
 export const NOTIFICATION_CLICK_EVENT = "jayhun:notification-click";
 
 export type NotificationPermission =
-  | "prompt"
-  | "granted"
-  | "denied"
-  | "unsupported";
+  "prompt" | "granted" | "denied" | "unsupported";
 
 export function loadNotificationsEnabled(): boolean {
   try {
@@ -49,7 +52,9 @@ export function cachedNotificationPermission(): NotificationPermission {
 
 export async function probeNotificationPermission(): Promise<NotificationPermission> {
   try {
-    permission = await invoke<NotificationPermission>("notification_permission");
+    permission = await invoke<NotificationPermission>(
+      "notification_permission",
+    );
   } catch {
     permission = "unsupported";
   }
@@ -79,8 +84,24 @@ export function openNotificationSettings(): Promise<void> {
 let windowFocused =
   typeof document !== "undefined" ? document.hasFocus() : true;
 
+const focusListeners = new Set<() => void>();
+
 export function setWindowFocused(focused: boolean) {
+  if (windowFocused === focused) return;
   windowFocused = focused;
+  for (const listener of focusListeners) listener();
+}
+
+export function useWindowFocused(): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      focusListeners.add(listener);
+      return () => {
+        focusListeners.delete(listener);
+      };
+    },
+    () => windowFocused,
+  );
 }
 
 /**
@@ -106,7 +127,11 @@ export function shouldNotify({
 export type NotificationEvent = "finished" | "needsInput";
 
 /** App name, then the session title, then the reply itself. */
-export type NotificationText = { title: string; subtitle: string; body: string };
+export type NotificationText = {
+  title: string;
+  subtitle: string;
+  body: string;
+};
 
 const BODY_MAX = 240;
 
@@ -190,4 +215,24 @@ export async function notifySession(
   } catch {
     return false;
   }
+}
+
+/** One completion cue. Native sound replaces the in-app sound on success. */
+export async function announceSessionFinished(
+  session: Session | undefined,
+  sessionVisible: boolean,
+  succeeded: boolean,
+  isCurrent: () => boolean,
+): Promise<void> {
+  if (
+    !succeeded ||
+    !isCurrent() ||
+    !session ||
+    session.busy ||
+    session.inboxAsk ||
+    sessionNeedsInput(session)
+  )
+    return;
+  const sent = await notifySession(session, "finished", sessionVisible);
+  if (!sent && isCurrent()) playCue("turnFinished");
 }

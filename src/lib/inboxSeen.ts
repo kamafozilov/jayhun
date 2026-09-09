@@ -69,15 +69,6 @@ function saveInboxSeenStore(store: SeenStore) {
   notifyInboxSeen();
 }
 
-function mapFrom(items: readonly InboxSeenEntry[]): SeenMap {
-  const next: SeenMap = {};
-  for (const item of items) {
-    if (!item.key) continue;
-    next[item.key] = inboxUpdatedAt(item);
-  }
-  return next;
-}
-
 function mergeSeen(items: SeenMap, entry: InboxSeenEntry): SeenMap {
   if (!entry.key) return items;
   return {
@@ -122,10 +113,10 @@ export function markInboxItemsSeen(entries: readonly InboxSeenEntry[]) {
 /** First snapshot of the list is remembered so existing items do not badge. */
 export function seedInboxSeenIfNeeded(items: readonly InboxSeenEntry[]) {
   const store = loadInboxSeenStore();
-  if (store.seeded || items.length === 0) return;
+  if (store.seeded) return;
   saveInboxSeenStore({
     seeded: true,
-    items: { ...store.items, ...mapFrom(items) },
+    items: items.reduce(mergeSeen, store.items),
   });
 }
 
@@ -137,7 +128,14 @@ export function inboxHasUnseenItems(items: readonly InboxSeenEntry[]): boolean {
 
 export function subscribeInboxSeen(listener: Listener): () => void {
   listeners.add(listener);
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === KEY || event.key === null) listener();
+  };
+  if (typeof window !== "undefined")
+    window.addEventListener("storage", onStorage);
   return () => {
+    if (typeof window !== "undefined")
+      window.removeEventListener("storage", onStorage);
     listeners.delete(listener);
   };
 }
