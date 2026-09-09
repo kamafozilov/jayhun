@@ -40,23 +40,31 @@ export function SidebarUpdate() {
   }, [startUpdater]);
   const { phase } = snapshot;
   if (
-    !["available", "downloading", "ready", "installing", "error"].includes(
-      phase,
-    ) ||
+    ![
+      "available",
+      "downloading",
+      "verifying",
+      "ready",
+      "installing",
+      "error",
+    ].includes(phase) ||
     (phase === "error" && !snapshot.availableVersion)
   )
     return null;
-  const busy = phase === "downloading" || phase === "installing";
+  const busy =
+    phase === "downloading" || phase === "verifying" || phase === "installing";
   const label =
     phase === "downloading"
       ? "Downloading…"
-      : phase === "installing"
-        ? "Restarting…"
-        : phase === "ready"
-          ? "Restart to update"
-          : phase === "error"
-            ? "Retry download"
-            : "Update available";
+      : phase === "verifying"
+        ? "Verifying update…"
+        : phase === "installing"
+          ? "Restarting…"
+          : phase === "ready"
+            ? "Restart to update"
+            : phase === "error"
+              ? "Retry download"
+              : "Update available";
   return (
     <button
       type="button"
@@ -79,7 +87,7 @@ export function SidebarUpdate() {
           aria-valuemax={100}
           aria-valuenow={snapshot.progress}
           className={`absolute inset-y-0 left-0 -z-10 bg-content/10 transition-[width] duration-150 motion-reduce:transition-none ${snapshot.progress == null ? "animate-pulse motion-reduce:animate-none" : ""}`}
-          style={{ width: `${snapshot.progress ?? 100}%` }}
+          style={{ width: `${snapshot.progress ?? 33}%` }}
         />
       ) : null}
       <span className="grid size-[18px] shrink-0 place-items-center">

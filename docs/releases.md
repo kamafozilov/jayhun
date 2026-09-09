@@ -47,13 +47,16 @@ manual package installation.
 
 ## Application behavior
 
-Packaged builds check at startup and every six hours. Focus and network
+Packaged builds first check 15 seconds after startup, then every four minutes.
+Manual checks run immediately and reset the four-minute interval. Focus and network
 reconnection trigger a check when that interval has elapsed. Checks have a
 15-second timeout. The sidebar stays hidden if no update is available or a
 background check fails. Settings retains manual checking.
 
 Download and install are separate actions. The row shows byte progress, or an
 indeterminate indicator when the server does not report the file size.
+After the download completes, the row shows signature verification. The restart
+action becomes available only after verification succeeds.
 Restart to update installs the verified download. Download failures can be
 retried. A failed relaunch can be retried without reinstalling the package.
 

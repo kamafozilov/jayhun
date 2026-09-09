@@ -5485,7 +5485,12 @@ export default function App({
       {whatsNewVersion ? (
         <WhatsNewDialog
           version={whatsNewVersion}
-          onClose={() => setWhatsNewVersion(null)}
+          onClose={() => {
+            setUpdateNotice((notice) =>
+              notice?.version === whatsNewVersion ? null : notice,
+            );
+            setWhatsNewVersion(null);
+          }}
         />
       ) : null}
     </div>
