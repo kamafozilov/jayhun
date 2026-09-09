@@ -1,3 +1,9 @@
+import {
+  questionPromptTitle,
+  type UserQuestion,
+  type UserQuestionReply,
+} from "../userQuestion";
+import { codexQuestions, codexQuestionResponse } from "./codexQuestions";
 import { nativeModelId } from "../models";
 import type { Attachment, RuntimeMode } from "../session";
 import {
@@ -35,6 +41,12 @@ type PendingApproval = {
   resolve: (decision: ApprovalDecision) => void;
 };
 
+type PendingQuestion = {
+  rpcId: JsonRpcId;
+  questions: UserQuestion[];
+  sending: boolean;
+};
+
 type Live = {
   rpc: JsonRpcClient;
   threadId: string;
@@ -43,6 +55,7 @@ type Live = {
   planning: boolean;
   onEvent: (event: HarnessEvent) => void;
   approvals: Map<number, PendingApproval>;
+  questions: Map<number, PendingQuestion>;
   nextApprovalUiId: number;
   cancelled: boolean;
   muteUpdates: boolean;
@@ -61,6 +74,9 @@ type Resume = {
   threadId: string;
   cwd: string;
 };
+
+// Do not reuse UI IDs after a provider reconnect. Old callbacks must be inert.
+let nextQuestionUiId = 1;
 
 const liveByThread = new Map<string, Live>();
 const resumeByThread = new Map<string, Resume>();
@@ -166,6 +182,70 @@ export function respondCodexApproval(
   pending.resolve(decision);
 }
 
+export function respondCodexQuestion(
+  sessionId: string,
+  requestId: number,
+  reply: UserQuestionReply,
+): void {
+  const live = liveByThread.get(sessionId);
+  const pending = live?.questions.get(requestId);
+  if (
+    !live ||
+    !pending ||
+    pending.sending ||
+    live.muteUpdates ||
+    live.rpc.isClosed
+  )
+    return;
+  pending.sending = true;
+  void live.rpc
+    .respond(pending.rpcId, codexQuestionResponse(pending.questions, reply))
+    .then(() => resolveCodexQuestion(live, requestId, reply.kind))
+    .catch(() => {
+      if (live.questions.get(requestId) !== pending) return;
+      pending.sending = false;
+      live.onEvent({
+        type: "status",
+        text: "Could not send your answer. Please try again.",
+      });
+    });
+}
+
+function showNextCodexQuestion(live: Live): void {
+  const next = live.questions.entries().next().value;
+  if (!next) return;
+  const [requestId, pending] = next;
+  live.onEvent({
+    type: "question.asked",
+    requestId,
+    title: questionPromptTitle(pending.questions),
+    questions: pending.questions,
+  });
+}
+
+function resolveCodexQuestion(
+  live: Live,
+  requestId: number,
+  decision: "answered" | "skipped" | "cancelled",
+): void {
+  const visible = live.questions.keys().next().value === requestId;
+  if (!live.questions.delete(requestId)) return;
+  live.onEvent({ type: "question.resolved", requestId, decision });
+  if (visible) showNextCodexQuestion(live);
+}
+
+function clearCodexQuestions(live: Live): void {
+  const requestIds = [...live.questions.keys()];
+  live.questions.clear();
+  for (const requestId of requestIds) {
+    live.onEvent({
+      type: "question.resolved",
+      requestId,
+      decision: "cancelled",
+    });
+  }
+}
+
 export async function cancelCodexTurn(sessionId: string): Promise<void> {
   const live = liveByThread.get(sessionId);
   if (!live) {
@@ -174,6 +254,7 @@ export async function cancelCodexTurn(sessionId: string): Promise<void> {
   }
   live.cancelled = true;
   live.muteUpdates = true;
+  clearCodexQuestions(live);
   for (const [, pending] of live.approvals) {
     pending.resolve("deny");
   }
@@ -199,6 +280,7 @@ export async function stopCodexSession(sessionId: string): Promise<void> {
   liveByThread.delete(sessionId);
   if (live) {
     live.muteUpdates = true;
+    clearCodexQuestions(live);
     live.turnDone?.();
     live.turnDone = null;
     live.turnFailed = null;
@@ -271,6 +353,7 @@ async function ensureLive(input: HarnessSessionInput): Promise<Live> {
       const live = liveRef.current;
       live?.turnFailed?.(new Error("Codex app-server exited"));
       if (live) {
+        clearCodexQuestions(live);
         live.turnDone = null;
         live.turnFailed = null;
       }
@@ -347,6 +430,7 @@ async function ensureLive(input: HarnessSessionInput): Promise<Live> {
       planning: input.intent === "plan",
       onEvent: input.onEvent,
       approvals: new Map(),
+      questions: new Map(),
       nextApprovalUiId: 1,
       cancelled: false,
       muteUpdates: didResume,
@@ -431,6 +515,7 @@ async function runTurn(live: Live, input: SendTurnInput): Promise<void> {
     });
     throw error;
   } finally {
+    clearCodexQuestions(live);
     live.turnDone = null;
     live.turnFailed = null;
   }
@@ -458,6 +543,17 @@ async function runCompaction(live: Live): Promise<void> {
 }
 
 function handleNotification(live: Live, method: string, params: unknown): void {
+  if (method === "serverRequest/resolved") {
+    const rec = asRecord(params);
+    if (rec?.threadId !== live.threadId) return;
+    for (const [uiId, pending] of live.questions) {
+      if (pending.rpcId === rec.requestId) {
+        resolveCodexQuestion(live, uiId, "cancelled");
+        break;
+      }
+    }
+    return;
+  }
   // A Codex turn is a sequence of items. Completing an agentMessage does not
   // mean the turn is over — more tools and messages can still arrive. Only
   // turn/completed (and turn/aborted) settle sendCodexTurn, which is what the
@@ -503,6 +599,7 @@ function publishCodexText(
 }
 
 function finishActiveTurn(live: Live, extraEvents: HarnessEvent[] = []): void {
+  clearCodexQuestions(live);
   live.turnEndPending = false;
   live.activeTurnId = null;
   live.emittedAssistant = "";
@@ -535,7 +632,32 @@ async function handleServerRequest(
   params: unknown,
 ): Promise<void> {
   if (method === "item/tool/requestUserInput") {
-    await live.rpc.respond(id, { answers: {} }).catch(() => undefined);
+    if (live.rpc.isClosed) return;
+    const rec = asRecord(params);
+    if (
+      live.muteUpdates ||
+      !live.turnDone ||
+      rec?.threadId !== live.threadId ||
+      (live.activeTurnId && rec.turnId !== live.activeTurnId)
+    ) {
+      await live.rpc.respond(id, { answers: {} }).catch(() => undefined);
+      return;
+    }
+    if ([...live.questions.values()].some((pending) => pending.rpcId === id))
+      return;
+    const questions = codexQuestions(params);
+    if (questions.length === 0) {
+      await live.rpc
+        .respondError(id, { code: -32602, message: "Invalid Codex questions" })
+        .catch(() => undefined);
+      return;
+    }
+    live.questions.set(nextQuestionUiId++, {
+      rpcId: id,
+      questions,
+      sending: false,
+    });
+    if (live.questions.size === 1) showNextCodexQuestion(live);
     return;
   }
 
