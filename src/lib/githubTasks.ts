@@ -136,12 +136,16 @@ const inboxListListeners = new Set<InboxListListener>();
 
 export function subscribeInboxList(listener: InboxListListener): () => void {
   inboxListListeners.add(listener);
-  return () => { inboxListListeners.delete(listener); };
+  return () => {
+    inboxListListeners.delete(listener);
+  };
 }
 
 let inboxListCache: InboxListCache | null = null;
 const inboxListInflight = new Map<string, Promise<InboxListResult>>();
 const repoByPath = new Map<string, string>();
+const workItemByKey = new Map<string, GithubWorkItem>();
+const workItemInflight = new Map<string, Promise<GithubWorkItem>>();
 const detailsByKey = new Map<string, GithubWorkItemDetails>();
 const threadByKey = new Map<string, GithubWorkItemThread>();
 const threadInflight = new Map<string, Promise<GithubWorkItemThread>>();
@@ -152,6 +156,8 @@ export function clearInboxCache() {
   inboxListCache = null;
   inboxListInflight.clear();
   repoByPath.clear();
+  workItemByKey.clear();
+  workItemInflight.clear();
   detailsByKey.clear();
   threadByKey.clear();
   threadInflight.clear();
@@ -222,6 +228,43 @@ export function listGithubWorkItems(
   });
 }
 
+function workItemLookupKey(
+  repo: string,
+  kind: GithubTaskKind,
+  number: number,
+): string {
+  return `${repo.trim().toLowerCase()}:${kind}:${number}`;
+}
+
+/** Fetch one exact item after targeted Inbox navigation misses its list cache. */
+export function githubWorkItem(
+  cwd: string,
+  repo: string,
+  kind: GithubTaskKind,
+  number: number,
+): Promise<GithubWorkItem> {
+  const key = workItemLookupKey(repo, kind, number);
+  const cached = workItemByKey.get(key);
+  if (cached) return Promise.resolve(cached);
+  const pending = workItemInflight.get(key);
+  if (pending) return pending;
+  const promise = invoke<GithubWorkItem>("git_github_work_item", {
+    cwd,
+    repo,
+    kind,
+    number,
+  })
+    .then((item) => {
+      workItemByKey.set(key, item);
+      return item;
+    })
+    .finally(() => {
+      if (workItemInflight.get(key) === promise) workItemInflight.delete(key);
+    });
+  workItemInflight.set(key, promise);
+  return promise;
+}
+
 export function formatGithubQuery(query: GithubWorkItemQuery): string {
   const parts: string[] = [];
   if (query.assignedToMe) parts.push("assignee:@me");
@@ -288,48 +331,53 @@ export function formatRelativeTime(
 
 export function detailsCacheKey(
   cwd: string,
+  repo: string,
   kind: GithubTaskKind,
   number: number,
 ): string {
-  return `${normalizeProjectPath(cwd)}:${kind}:${number}`;
+  return `${normalizeProjectPath(cwd)}:${workItemLookupKey(repo, kind, number)}`;
 }
 
 export function peekGithubWorkItemDetails(
   cwd: string,
+  repo: string,
   kind: GithubTaskKind,
   number: number,
 ): GithubWorkItemDetails | null {
-  return detailsByKey.get(detailsCacheKey(cwd, kind, number)) ?? null;
+  return detailsByKey.get(detailsCacheKey(cwd, repo, kind, number)) ?? null;
 }
 
 export async function githubWorkItemDetails(
   cwd: string,
+  repo: string,
   kind: GithubTaskKind,
   number: number,
 ): Promise<GithubWorkItemDetails> {
   const details = await invoke<GithubWorkItemDetails>(
     "git_github_work_item_details",
-    { cwd, kind, number },
+    { cwd, repo, kind, number },
   );
-  detailsByKey.set(detailsCacheKey(cwd, kind, number), details);
+  detailsByKey.set(detailsCacheKey(cwd, repo, kind, number), details);
   return details;
 }
 
 export function peekGithubWorkItemThread(
   cwd: string,
+  repo: string,
   kind: GithubTaskKind,
   number: number,
 ): GithubWorkItemThread | null {
-  return threadByKey.get(detailsCacheKey(cwd, kind, number)) ?? null;
+  return threadByKey.get(detailsCacheKey(cwd, repo, kind, number)) ?? null;
 }
 
 export async function githubWorkItemThread(
   cwd: string,
+  repo: string,
   kind: GithubTaskKind,
   number: number,
   options?: { force?: boolean },
 ): Promise<GithubWorkItemThread> {
-  const key = detailsCacheKey(cwd, kind, number);
+  const key = detailsCacheKey(cwd, repo, kind, number);
   if (options?.force) {
     threadByKey.delete(key);
     threadInflight.delete(key);
@@ -338,6 +386,7 @@ export async function githubWorkItemThread(
   if (pending) return pending;
   const promise = invoke<GithubWorkItemThread>("git_github_work_item_thread", {
     cwd,
+    repo,
     kind,
     number,
   })
@@ -354,6 +403,7 @@ export async function githubWorkItemThread(
 
 export async function githubWorkItemComment(
   cwd: string,
+  repo: string,
   kind: GithubTaskKind,
   number: number,
   body: string,
@@ -361,12 +411,13 @@ export async function githubWorkItemComment(
 ): Promise<string> {
   const url = await invoke<string>("git_github_work_item_comment", {
     cwd,
+    repo,
     kind,
     number,
     body: body.trim(),
     inReplyTo: options?.inReplyTo?.trim() ?? "",
   });
-  const key = detailsCacheKey(cwd, kind, number);
+  const key = detailsCacheKey(cwd, repo, kind, number);
   threadByKey.delete(key);
   threadInflight.delete(key);
   return url;
@@ -400,25 +451,35 @@ export function githubReviewStateLabel(state: string): string {
   }
 }
 
-export function prDiffCacheKey(cwd: string, number: number): string {
-  return `${normalizeProjectPath(cwd)}:pr:${number}`;
+export function prDiffCacheKey(
+  cwd: string,
+  repo: string,
+  number: number,
+): string {
+  return detailsCacheKey(cwd, repo, "pr", number);
 }
 
 export function peekGithubPrDiff(
   cwd: string,
+  repo: string,
   number: number,
 ): GithubPrDiff | null {
-  return prDiffByKey.get(prDiffCacheKey(cwd, number)) ?? null;
+  return prDiffByKey.get(prDiffCacheKey(cwd, repo, number)) ?? null;
 }
 
 export async function githubPrDiff(
   cwd: string,
+  repo: string,
   number: number,
 ): Promise<GithubPrDiff> {
-  const key = prDiffCacheKey(cwd, number);
+  const key = prDiffCacheKey(cwd, repo, number);
   const pending = prDiffInflight.get(key);
   if (pending) return pending;
-  const promise = invoke<GithubPrDiff>("git_github_pr_diff", { cwd, number })
+  const promise = invoke<GithubPrDiff>("git_github_pr_diff", {
+    cwd,
+    repo,
+    number,
+  })
     .then((diff) => {
       prDiffByKey.set(key, diff);
       return diff;

@@ -20,6 +20,24 @@ describe("isPersistableId", () => {
 });
 
 describe("sanitizeSessionForPersist", () => {
+  it("persists a canonical GitHub work-item identity", () => {
+    const session = newSession("codex", "/tmp/project");
+    session.blocks = [{ id: "u1", role: "user", text: "fix PR #42" }];
+    session.linkedWorkItem = {
+      kind: "pr",
+      repo: "openai/codex",
+      number: 42,
+      url: "https://example.com/not-trusted",
+    };
+
+    expect(sanitizeSessionForPersist(session).linkedWorkItem).toEqual({
+      kind: "pr",
+      repo: "openai/codex",
+      number: 42,
+      url: "https://github.com/openai/codex/pull/42",
+    });
+  });
+
   it("omits a path-like provider session id so upsert can still snapshot git", () => {
     const session = newSession("pi", "/tmp/project");
     session.providerSessionId = "/Users/me/.pi/agent/sessions/abc.jsonl";
@@ -256,6 +274,21 @@ describe("persistFingerprint", () => {
     expect(persistFingerprint({ ...before, title: "Renamed" })).not.toBe(
       persistFingerprint(before),
     );
+  });
+
+  it("schedules a save when a work item resolves after the transcript settles", () => {
+    const session = base();
+    const before = persistFingerprint(session);
+    session.linkedWorkItem = {
+      kind: "pr",
+      repo: "acme/app",
+      number: 42,
+      url: "https://github.com/acme/app/pull/42",
+    };
+    const linked = persistFingerprint(session);
+    expect(linked).not.toBe(before);
+    delete session.linkedWorkItem;
+    expect(persistFingerprint(session)).not.toBe(linked);
   });
 
   it("ignores state that is never written", () => {

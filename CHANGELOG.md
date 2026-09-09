@@ -2,12 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+- Persist GitHub issue/PR links on coding sessions, navigate from session badges to Inbox, and reopen related conversations across projects, including archived chats. Adapted from [MonoCode commit `20b78f5`](https://github.com/hardbeat920/monocode/commit/20b78f5f4471b3303fa6b5c05cd54804b8af1d22).
+
 ### Fixed
 - Add an OMP conversation-language instruction to reduce unrequested language switches in progress updates and replies, including resumed chats.
 - Preserve the last saved default provider and per-provider models across desktop development, worktrees, and releases, loading them before session creation.
 - Use Codex when no default provider has been saved, without overriding an explicit choice.
 - Avoid opening Cursor login during background model catalog discovery.
 - Restore open issues and draft/open pull requests when clearing inbox filters; keep all statuses as an explicit choice, including from an empty inbox.
+- Keep linked GitHub details, discussions, diffs, and comments scoped to the linked repository rather than the current checkout.
+- Reject ambiguous work-item references, retain explicit linking when title generation fails, and expose session links as independent accessible controls.
+- Retarget an already-open Inbox correctly and show retryable errors when a linked item cannot be loaded.
+- Link existing unlinked conversations from later issue/PR references without renaming or rebinding them; preserve resolved links through fast provider completion and show badges before the history write finishes.
 
 ## [0.1.43] - 2026-09-09
 

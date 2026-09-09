@@ -91,6 +91,8 @@ pub struct SessionUpsert {
     pub branch: Option<String>,
     #[serde(default)]
     pub worktree_cwd: Option<String>,
+    #[serde(default)]
+    pub linked_work_item: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,6 +118,8 @@ pub struct SessionSummary {
     pub archived: bool,
     #[serde(default)]
     pub pinned: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub linked_work_item: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,6 +143,8 @@ pub struct SessionRecord {
     pub branch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worktree_cwd: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub linked_work_item: Option<Value>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -178,6 +184,12 @@ pub fn session_list_by_project(
     }
     let conn = store.conn.lock().map_err(|_| "Session store is locked")?;
     list_by_project(&conn, &cwd).map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
+pub fn session_list_linked(store: State<'_, SessionStore>) -> Result<Vec<SessionSummary>, String> {
+    let conn = store.conn.lock().map_err(|_| "Session store is locked")?;
+    list_linked(&conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command(async)]
@@ -352,24 +364,6 @@ fn ensure_session_column(conn: &Connection, column: &str, decl: &str) -> rusqlit
     Ok(())
 }
 
-/// Add a `sessions` column when it is missing, tolerating the case where a
-/// recorded migration version has no matching column.
-fn ensure_column(conn: &Connection, name: &str, decl: &str) -> rusqlite::Result<()> {
-    let present: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = ?1",
-        params![name],
-        |row| row.get(0),
-    )?;
-    if present > 0 {
-        return Ok(());
-    }
-    conn.execute(
-        &format!("ALTER TABLE sessions ADD COLUMN {name} {decl}"),
-        [],
-    )?;
-    Ok(())
-}
-
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -453,7 +447,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         // `blocks_json LIKE '%"role":"user"%'`, which reads and substring-scans
         // every transcript in the project on each switch. Materialize the
         // predicate so the covering index can answer it instead.
-        ensure_column(conn, "has_user_message", "INTEGER NOT NULL DEFAULT 0")?;
+        ensure_session_column(conn, "has_user_message", "INTEGER NOT NULL DEFAULT 0")?;
         conn.execute(
             "UPDATE sessions SET has_user_message =
                CASE WHEN blocks_json != '[]' AND blocks_json LIKE '%\"role\":\"user\"%'
@@ -481,6 +475,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         ("worktree_cwd", "TEXT"),
         ("has_user_message", "INTEGER NOT NULL DEFAULT 0"),
         ("pinned", "INTEGER NOT NULL DEFAULT 0"),
+        ("linked_work_item_json", "TEXT"),
     ] {
         ensure_session_column(conn, column, decl)?;
     }
@@ -495,9 +490,9 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         // Version rows are not proof the columns landed: a DB can carry a
         // recorded version from another build without the ALTER that went with
         // it, and indexing a missing column aborts the whole migration.
-        ensure_column(conn, "branch", "TEXT")?;
-        ensure_column(conn, "archived", "INTEGER NOT NULL DEFAULT 0")?;
-        ensure_column(conn, "has_user_message", "INTEGER NOT NULL DEFAULT 0")?;
+        ensure_session_column(conn, "branch", "TEXT")?;
+        ensure_session_column(conn, "archived", "INTEGER NOT NULL DEFAULT 0")?;
+        ensure_session_column(conn, "has_user_message", "INTEGER NOT NULL DEFAULT 0")?;
         conn.execute_batch(
             "DROP INDEX IF EXISTS sessions_cwd_listed_idx;
              CREATE INDEX IF NOT EXISTS sessions_cwd_cover_idx
@@ -521,7 +516,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         // Pinning is a listing column, so it has to live in the covering
         // index with `archived`. Selecting it off the table would walk past
         // `blocks_json` on every project switch.
-        ensure_column(conn, "pinned", "INTEGER NOT NULL DEFAULT 0")?;
+        ensure_session_column(conn, "pinned", "INTEGER NOT NULL DEFAULT 0")?;
         conn.execute_batch(
             "DROP INDEX IF EXISTS sessions_cwd_cover_idx;
              CREATE INDEX IF NOT EXISTS sessions_cwd_cover_idx
@@ -531,6 +526,23 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         )?;
         conn.execute(
             "INSERT INTO schema_migrations (version, applied_at) VALUES (11, ?1)",
+            params![now_millis()],
+        )?;
+    }
+    if current < 12 {
+        // The sidebar renders this metadata for every row, so keep it in the
+        // same covering index as the rest of the session-card projection.
+        ensure_session_column(conn, "linked_work_item_json", "TEXT")?;
+        conn.execute_batch(
+            "DROP INDEX IF EXISTS sessions_cwd_cover_idx;
+             CREATE INDEX IF NOT EXISTS sessions_cwd_cover_idx
+               ON sessions (cwd, has_user_message, updated_at DESC, id, harness,
+                            model, runtime_mode, title, provider_session_id,
+                            created_at, branch, archived, pinned,
+                            linked_work_item_json);",
+        )?;
+        conn.execute(
+            "INSERT INTO schema_migrations (version, applied_at) VALUES (12, ?1)",
             params![now_millis()],
         )?;
     }
@@ -566,6 +578,12 @@ fn upsert_session(conn: &Connection, session: &SessionUpsert) -> rusqlite::Resul
     let model_settings = serde_json::to_string(&session.model_settings)
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let blocks_json = serde_json::to_string(&session.blocks)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let linked_work_item_json = session
+        .linked_work_item
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let provider_session_id = session
         .provider_session_id
@@ -617,8 +635,9 @@ fn upsert_session(conn: &Connection, session: &SessionUpsert) -> rusqlite::Resul
         "INSERT INTO sessions (
            id, cwd, harness, model, model_settings, runtime_mode, title,
            provider_session_id, blocks_json, created_at, updated_at, branch,
-           context_used, context_window, worktree_cwd, has_user_message
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+           context_used, context_window, worktree_cwd, has_user_message,
+           linked_work_item_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
          ON CONFLICT(id) DO UPDATE SET
            cwd = excluded.cwd,
            harness = excluded.harness,
@@ -633,7 +652,8 @@ fn upsert_session(conn: &Connection, session: &SessionUpsert) -> rusqlite::Resul
            context_used = excluded.context_used,
            context_window = excluded.context_window,
            worktree_cwd = excluded.worktree_cwd,
-           has_user_message = excluded.has_user_message",
+           has_user_message = excluded.has_user_message,
+           linked_work_item_json = excluded.linked_work_item_json",
         params![
             session.id,
             session.cwd,
@@ -651,6 +671,7 @@ fn upsert_session(conn: &Connection, session: &SessionUpsert) -> rusqlite::Resul
             session.context_window,
             worktree_cwd,
             i64::from(has_user_message),
+            linked_work_item_json,
         ],
     )?;
 
@@ -670,6 +691,7 @@ fn upsert_session(conn: &Connection, session: &SessionUpsert) -> rusqlite::Resul
         updated_at,
         archived,
         pinned,
+        linked_work_item: session.linked_work_item.clone(),
     })
 }
 
@@ -923,7 +945,8 @@ fn list_by_project(conn: &Connection, cwd: &str) -> rusqlite::Result<Vec<Session
     let git = crate::fs::git_info_for(&crate::fs::expand_home(cwd));
     let mut statement = conn.prepare(
         "SELECT id, cwd, harness, model, runtime_mode, title, provider_session_id,
-                created_at, updated_at, branch, archived, pinned
+                created_at, updated_at, branch, archived, pinned,
+                linked_work_item_json
          FROM sessions
          WHERE cwd = ?1
            AND has_user_message = 1
@@ -934,6 +957,7 @@ fn list_by_project(conn: &Connection, cwd: &str) -> rusqlite::Result<Vec<Session
         let stored_branch: Option<String> = row.get(9)?;
         let archived: i64 = row.get(10)?;
         let pinned: i64 = row.get(11)?;
+        let linked_work_item = optional_json(row.get(12)?);
         Ok(SessionSummary {
             id: row.get(0)?,
             cwd: row.get(1)?,
@@ -950,6 +974,43 @@ fn list_by_project(conn: &Connection, cwd: &str) -> rusqlite::Result<Vec<Session
             deletions: 0,
             archived: archived != 0,
             pinned: pinned != 0,
+            linked_work_item,
+        })
+    })?;
+    rows.collect()
+}
+
+fn list_linked(conn: &Connection) -> rusqlite::Result<Vec<SessionSummary>> {
+    let mut statement = conn.prepare(
+        "SELECT id, cwd, harness, model, runtime_mode, title, provider_session_id,
+                created_at, updated_at, branch, archived, pinned,
+                linked_work_item_json
+         FROM sessions
+         WHERE has_user_message = 1
+           AND linked_work_item_json IS NOT NULL
+           AND id NOT IN (SELECT id FROM sessions WHERE inbox_ask IS NOT NULL)
+         ORDER BY updated_at DESC, id ASC",
+    )?;
+    let rows = statement.query_map([], |row| {
+        let archived: i64 = row.get(10)?;
+        let pinned: i64 = row.get(11)?;
+        Ok(SessionSummary {
+            id: row.get(0)?,
+            cwd: row.get(1)?,
+            harness: row.get(2)?,
+            model: row.get(3)?,
+            runtime_mode: row.get(4)?,
+            title: row.get(5)?,
+            provider_session_id: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+            branch: nonempty(row.get(9)?),
+            repo: None,
+            additions: 0,
+            deletions: 0,
+            archived: archived != 0,
+            pinned: pinned != 0,
+            linked_work_item: optional_json(row.get(12)?),
         })
     })?;
     rows.collect()
@@ -974,6 +1035,10 @@ fn json_eq(raw: &str, incoming: &Value) -> bool {
         Ok(previous) => previous == *incoming,
         Err(_) => false,
     }
+}
+
+fn optional_json(raw: Option<String>) -> Option<Value> {
+    raw.and_then(|value| serde_json::from_str(&value).ok())
 }
 
 fn delete_session(conn: &Connection, session_id: &str) -> rusqlite::Result<()> {
@@ -1001,7 +1066,8 @@ fn get_session(conn: &Connection, session_id: &str) -> rusqlite::Result<Option<S
     conn.query_row(
         "SELECT id, cwd, harness, model, model_settings, runtime_mode, title,
                 provider_session_id, blocks_json, created_at, updated_at,
-                context_used, context_window, branch, worktree_cwd
+                context_used, context_window, branch, worktree_cwd,
+                linked_work_item_json
          FROM sessions
          WHERE id = ?1 AND inbox_ask IS NULL",
         params![session_id],
@@ -1036,6 +1102,7 @@ fn get_session(conn: &Connection, session_id: &str) -> rusqlite::Result<Option<S
                 context_window: row.get(12)?,
                 branch: row.get(13)?,
                 worktree_cwd: row.get(14)?,
+                linked_work_item: optional_json(row.get(15)?),
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
             })
@@ -1151,6 +1218,7 @@ mod tests {
             context_window: None,
             branch: None,
             worktree_cwd: None,
+            linked_work_item: None,
         }
     }
 
@@ -1197,7 +1265,8 @@ mod tests {
             .query_row(
                 "EXPLAIN QUERY PLAN
                  SELECT id, cwd, harness, model, runtime_mode, title, provider_session_id,
-                        created_at, updated_at, branch, archived, pinned
+                        created_at, updated_at, branch, archived, pinned,
+                        linked_work_item_json
                  FROM sessions
                  WHERE cwd = ?1
                    AND has_user_message = 1
@@ -1291,6 +1360,93 @@ mod tests {
         let stored = get_session(&conn, "s1").unwrap().unwrap();
         assert_eq!(stored.context_used, Some(29_821));
         assert_eq!(stored.context_window, Some(1_000_000));
+    }
+
+    #[test]
+    fn linked_work_item_survives_upgrade_and_reopen() {
+        let path = std::env::temp_dir().join(format!(
+            "jayhun-linked-upgrade-{}-{}.db",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut row = sample("s1", "/tmp/a", "Fix PR");
+        {
+            let store = SessionStore::open(path.clone()).unwrap();
+            let conn = store.conn.lock().unwrap();
+            upsert_session(&conn, &row).unwrap();
+            // Recreate the pre-link schema with an existing conversation.
+            conn.execute_batch(
+                "DROP INDEX sessions_cwd_cover_idx;
+                 ALTER TABLE sessions DROP COLUMN linked_work_item_json;
+                 DELETE FROM schema_migrations WHERE version >= 12;",
+            )
+            .unwrap();
+        }
+        row.linked_work_item = Some(json!({
+            "kind": "pr",
+            "repo": "openai/codex",
+            "number": 42,
+            "url": "https://github.com/openai/codex/pull/42"
+        }));
+        {
+            let store = SessionStore::open(path.clone()).unwrap();
+            let conn = store.conn.lock().unwrap();
+            let old = get_session(&conn, "s1").unwrap().unwrap();
+            assert_eq!(old.blocks, row.blocks);
+            assert_eq!(old.linked_work_item, None);
+            assert_eq!(list_by_project(&conn, "/tmp/a").unwrap()[0].id, "s1");
+            upsert_session(&conn, &row).unwrap();
+        }
+        {
+            let store = SessionStore::open(path.clone()).unwrap();
+            let conn = store.conn.lock().unwrap();
+            let listed = list_by_project(&conn, "/tmp/a").unwrap();
+            assert_eq!(listed[0].linked_work_item, row.linked_work_item);
+            let stored = get_session(&conn, "s1").unwrap().unwrap();
+            assert_eq!(stored.linked_work_item, row.linked_work_item);
+            assert_eq!(stored.blocks, row.blocks);
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn list_linked_finds_threads_across_projects() {
+        let store = SessionStore::open_in_memory().unwrap();
+        let conn = store.conn.lock().unwrap();
+        let linked = json!({
+            "kind": "pr",
+            "repo": "openai/codex",
+            "number": 42,
+            "url": "https://github.com/openai/codex/pull/42"
+        });
+        let mut first = sample("s1", "/tmp/a", "First");
+        first.linked_work_item = Some(linked.clone());
+        let mut second = sample("s2", "/tmp/b", "Second");
+        second.linked_work_item = Some(linked);
+        upsert_session(&conn, &first).unwrap();
+        upsert_session(&conn, &second).unwrap();
+        upsert_session(&conn, &sample("s3", "/tmp/a", "Unlinked")).unwrap();
+        set_archived(&conn, "s2", true).unwrap();
+        let mut ask = sample("ask", "/tmp/b", "Temporary Ask");
+        ask.linked_work_item = first.linked_work_item.clone();
+        upsert_session(&conn, &ask).unwrap();
+        conn.execute("UPDATE sessions SET inbox_ask = '{}' WHERE id = 'ask'", [])
+            .unwrap();
+        let mut blank = sample("blank", "/tmp/b", "Blank");
+        blank.linked_work_item = first.linked_work_item.clone();
+        blank.blocks = json!([]);
+        upsert_session(&conn, &blank).unwrap();
+
+        let rows = list_linked(&conn).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().any(|row| row.id == "s1"));
+        assert!(rows.iter().any(|row| row.id == "s2" && row.archived));
+        assert!(rows
+            .iter()
+            .all(|row| row.linked_work_item == first.linked_work_item));
     }
 
     #[test]

@@ -1,11 +1,14 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Archive,
   Check,
   ChevronDown,
   ChevronRight,
   CircleAlert,
+  CircleDot,
   Folder,
   GitBranch,
+  GitPullRequest,
   Inbox,
   ListFilter,
   Pin,
@@ -88,7 +91,7 @@ import {
   saveSessionSidebarFilters,
   type SessionSidebarFilters,
 } from "../lib/sessionFilters";
-import type { HarnessId } from "../lib/session";
+import type { HarnessId, LinkedWorkItem } from "../lib/session";
 import type { LiveAgent } from "../lib/liveAgents";
 import type { SessionSummary } from "../lib/sessionStore";
 import type { SettingsSectionId } from "../lib/settings";
@@ -226,6 +229,7 @@ type Props = {
   onNewTerminal?: () => void;
   onSearch?: () => void;
   onOpenInbox?: () => void;
+  onOpenInboxItem?: (item: LinkedWorkItem) => void;
   onOpenNotes?: () => void;
   onGoToFile?: () => void;
   searchActive?: boolean;
@@ -299,6 +303,7 @@ function SidebarComponent({
   onNew,
   onSearch,
   onOpenInbox,
+  onOpenInboxItem,
   onOpenNotes,
   onGoToFile,
   searchActive = false,
@@ -739,7 +744,7 @@ function SidebarComponent({
 
   const onSessionContextMenu = (
     sessionId: string,
-    e: ReactMouseEvent<HTMLButtonElement>,
+    e: ReactMouseEvent<HTMLDivElement>,
   ) => {
     e.preventDefault();
     e.stopPropagation();
@@ -880,7 +885,7 @@ function SidebarComponent({
 
   const onSessionCardSelect = (
     sessionId: string,
-    event: ReactMouseEvent<HTMLButtonElement>,
+    event: { shiftKey: boolean },
   ) => {
     if (event.shiftKey) {
       contextSelectionRef.current = false;
@@ -919,6 +924,7 @@ function SidebarComponent({
         compact={compact}
         now={now}
         onSelect={onSessionCardSelect}
+        onOpenWorkItem={onOpenInboxItem}
         onPrefetch={onPrefetchSession}
         onPlaceOnPane={onPlaceSessionOnPane}
         onListDrop={onSessionListDrop}
@@ -2141,6 +2147,7 @@ function SessionCard({
   compact = false,
   now,
   onSelect,
+  onOpenWorkItem,
   onPrefetch,
   onPlaceOnPane,
   onListDrop,
@@ -2159,15 +2166,13 @@ function SessionCard({
   dropTarget?: boolean;
   compact?: boolean;
   now: number;
-  onSelect: (
-    sessionId: string,
-    event: ReactMouseEvent<HTMLButtonElement>,
-  ) => void;
+  onSelect: (sessionId: string, event: { shiftKey: boolean }) => void;
+  onOpenWorkItem?: (item: LinkedWorkItem) => void;
   onPrefetch?: (sessionId: string) => void;
   onPlaceOnPane?: (sessionId: string, targetId: string, edge: PaneEdge) => void;
   onListDrop?: (draggedId: string, target: SessionListDropTarget) => void;
   onListDropTargetChange?: (target: SessionListDropTarget | null) => void;
-  onContextMenu?: (e: ReactMouseEvent<HTMLButtonElement>) => void;
+  onContextMenu?: (e: ReactMouseEvent<HTMLDivElement>) => void;
   onArchive?: () => void;
   onRename?: () => void;
   onDelete?: () => void;
@@ -2213,6 +2218,42 @@ function SessionCard({
     </span>
   );
 
+  const linkedWorkItem = session.linkedWorkItem;
+  const workItemBadge = linkedWorkItem ? (
+    <button
+      type="button"
+      data-no-drag
+      data-tauri-drag-region="false"
+      title={`Open ${linkedWorkItem.kind === "pr" ? "PR" : "issue"} #${linkedWorkItem.number} in Inbox (${MOD}-click for GitHub)`}
+      aria-label={`Open ${linkedWorkItem.kind === "pr" ? "PR" : "issue"} #${linkedWorkItem.number}`}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.metaKey || event.ctrlKey) {
+          void openUrl(linkedWorkItem.url).catch(() => undefined);
+          return;
+        }
+        if (onOpenWorkItem) onOpenWorkItem(linkedWorkItem);
+        else void openUrl(linkedWorkItem.url).catch(() => undefined);
+      }}
+      onAuxClick={(event) => {
+        if (event.button !== 1) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void openUrl(linkedWorkItem.url).catch(() => undefined);
+      }}
+      className="pointer-events-auto relative flex min-h-6 shrink-0 cursor-pointer items-center gap-0.5 rounded px-0.5 text-[11px] tabular-nums text-accent hover:underline"
+    >
+      {linkedWorkItem.kind === "pr" ? (
+        <GitPullRequest className="size-3" strokeWidth={1.75} />
+      ) : (
+        <CircleDot className="size-3" strokeWidth={1.75} />
+      )}
+      <span>#{linkedWorkItem.number}</span>
+    </button>
+  ) : null;
+
   const onKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (e.key === "F2" && onRename) {
       e.preventDefault();
@@ -2225,7 +2266,7 @@ function SessionCard({
     }
   };
 
-  const onPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     // Warm the transcript during the press. Opening stays on click so a
     // drag-to-pane gesture does not switch conversations.
@@ -2328,11 +2369,8 @@ function SessionCard({
 
   return (
     <div className="group relative">
-      <button
-        type="button"
+      <div
         title={title}
-        aria-current={isActive ? "true" : undefined}
-        aria-pressed={isSelected}
         data-session-card={session.id}
         data-session-selected={isSelected ? "true" : undefined}
         data-tauri-drag-region="false"
@@ -2343,7 +2381,6 @@ function SessionCard({
           onSelect(session.id, event);
         }}
         onContextMenu={onContextMenu}
-        onKeyDown={onKeyDown}
         className={`relative border flex w-full touch-none flex-col rounded-md px-2.5 text-left ${
           compact ? "py-1.5" : "py-2"
         } ${dragging ? "opacity-40" : ""} ${
@@ -2358,11 +2395,19 @@ function SessionCard({
                   : "text-content/80 hover:bg-content/5 hover:text-content border-transparent"
         }`}
       >
+        <button
+          type="button"
+          aria-label={title}
+          aria-current={isActive ? "true" : undefined}
+          aria-pressed={isSelected}
+          onKeyDown={onKeyDown}
+          className="absolute inset-0 rounded-md"
+        />
         {dropTarget ? (
           <div className="pointer-events-none absolute inset-0 rounded-md bg-accent/20" />
         ) : null}
         {compact ? null : (
-          <span className="relative flex items-center gap-2">
+          <span className="pointer-events-none relative flex items-center gap-2">
             <span className="flex min-w-0 flex-1 items-center gap-1.5">
               <HarnessIcon
                 harness={session.harness}
@@ -2372,11 +2417,14 @@ function SessionCard({
                 {model}
               </span>
             </span>
-            {status}
+            <span className="flex shrink-0 items-center gap-1.5">
+              {workItemBadge}
+              {status}
+            </span>
           </span>
         )}
         <span
-          className={`relative flex min-w-0 items-center gap-1.5 ${
+          className={`pointer-events-none relative flex min-w-0 items-center gap-1.5 ${
             compact ? "" : "mt-1"
           }`}
         >
@@ -2389,9 +2437,14 @@ function SessionCard({
           <span className="min-w-0 flex-1 line-clamp-1 text-[13px] font-semibold leading-snug text-content">
             {title}
           </span>
-          {compact ? status : null}
+          {compact ? (
+            <span className="flex shrink-0 items-center gap-1.5">
+              {workItemBadge}
+              {status}
+            </span>
+          ) : null}
         </span>
-        <span className="relative mt-1 flex items-center gap-2">
+        <span className="pointer-events-none relative mt-1 flex items-center gap-2">
           {gitLabel ? (
             <span className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-content/45">
               <GitBranch className="size-3 shrink-0" strokeWidth={1.75} />
@@ -2413,7 +2466,7 @@ function SessionCard({
             />
           </span>
         </span>
-      </button>
+      </div>
       {onArchive ? (
         <button
           type="button"

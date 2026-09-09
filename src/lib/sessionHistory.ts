@@ -101,6 +101,9 @@ export function summaryFromSession(
     runtimeMode: session.runtimeMode,
     title: session.title,
     providerSessionId: session.providerSessionId,
+    ...(session.linkedWorkItem
+      ? { linkedWorkItem: session.linkedWorkItem }
+      : {}),
     ...(git?.branch ? { branch: git.branch } : {}),
     ...(git?.repo ? { repo: git.repo } : {}),
     createdAt: 0,
@@ -143,7 +146,15 @@ export function historyWithLiveSessions(
     if (!sameProjectPath(session.cwd, cwd)) continue;
     const live = session.busy || sessionNeedsInput(session);
     if (!shouldPersistSession(session) && !live) continue;
-    if (rows.some((row) => row.id === session.id)) continue;
+    const storedIndex = rows.findIndex((row) => row.id === session.id);
+    if (storedIndex >= 0) {
+      const stored = rows[storedIndex];
+      if (session.linkedWorkItem && !stored.linkedWorkItem) {
+        // Show a newly resolved link while its debounced history write is pending.
+        rows[storedIndex] = { ...stored, linkedWorkItem: session.linkedWorkItem };
+      }
+      continue;
+    }
     const sessionHint: SessionGitHint = {
       ...hint,
       ...(session.branch ? { branch: session.branch } : {}),

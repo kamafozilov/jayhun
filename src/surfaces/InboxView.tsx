@@ -15,6 +15,7 @@ import {
   MessageSquare,
   ListFilter,
   LoaderCircle,
+  MessageMultiple,
   RefreshCw,
   Search,
   type IconComponent,
@@ -41,6 +42,7 @@ import { useTabGroupLogos } from "../hooks/useTabGroupLogos";
 import {
   githubPrDiff,
   githubReviewDecisionLabel,
+  githubWorkItem,
   githubWorkItemComment,
   githubWorkItemDetails,
   githubWorkItemThread,
@@ -83,6 +85,13 @@ import {
 import { projectKey, projectName } from "../lib/paths";
 import { IS_MAC } from "../lib/platform";
 import { sameProjectPath, type RecentProject } from "../lib/recents";
+import { sessionDisplayTitle, type LinkedWorkItem } from "../lib/session";
+import type { SessionSummary } from "../lib/sessionStore";
+import {
+  inboxItemMatchesLinkedWorkItem,
+  linkedWorkItemInboxKey,
+  relatedSessionsForInboxItem,
+} from "../lib/sessionWorkItem";
 import {
   isInboxEntryUnseen,
   markInboxItemSeen,
@@ -277,6 +286,10 @@ type Props = {
   onClose?: () => void;
   onToggleSidebar?: () => void;
   onStart?: (item: InboxItem, body?: string) => void | Promise<void>;
+  sessions?: readonly SessionSummary[];
+  onOpenSession?: (sessionId: string) => void | Promise<void>;
+  /** Session-card destination to reveal after the Inbox list loads. */
+  target?: LinkedWorkItem | null;
 };
 
 export function InboxView({
@@ -289,6 +302,9 @@ export function InboxView({
   onClose,
   onToggleSidebar,
   onStart,
+  sessions = [],
+  onOpenSession,
+  target = null,
 }: Props) {
   const [discussionOpen, setDiscussionOpen] = useState(false);
   const listLock = useLockOverscroll<HTMLDivElement>();
@@ -312,7 +328,12 @@ export function InboxView({
     () => peekInboxForRail(recents, cwd)?.errors ?? {},
   );
   const [refresh, setRefresh] = useState(0);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const targetSelectionKey = target ? linkedWorkItemInboxKey(target) : null;
+  const [selectedKey, setSelectedKey] = useState<string | null>(
+    targetSelectionKey,
+  );
+  const [targetItem, setTargetItem] = useState<InboxItem | null>(null);
+  const [targetError, setTargetError] = useState<string | null>(null);
   const [filters, setFilters] = useState(loadInboxFilters);
   const [source, setSource] = useState(loadInboxSource);
   const [filterMenu, setFilterMenu] = useState<{ x: number; y: number } | null>(
@@ -375,6 +396,15 @@ export function InboxView({
       rememberedWidth = width;
     },
   });
+
+  useEffect(() => {
+    setSelectedKey(targetSelectionKey);
+    setTargetItem(null);
+    setTargetError(null);
+    if (!target) return;
+    setSource("github");
+    setSearchInput("");
+  }, [target, targetSelectionKey]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -460,11 +490,51 @@ export function InboxView({
     };
   }, [fetchQuery, projects, refresh]);
 
-  const visibleItems = useMemo(
-    () =>
-      applyInboxFilters(items, activeFilters, searchInput, Date.now(), source),
-    [activeFilters, items, searchInput, source],
-  );
+  useEffect(() => {
+    if (
+      !target ||
+      items.some((item) => inboxItemMatchesLinkedWorkItem(item, target))
+    ) {
+      return;
+    }
+    let cancelled = false;
+    setTargetError(null);
+    void githubWorkItem(cwd, target.repo, target.kind, target.number)
+      .then((item) => {
+        if (cancelled) return;
+        setTargetItem({
+          ...item,
+          projectPath: cwd,
+          provider: "github",
+        });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setTargetError(error instanceof Error ? error.message : String(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cwd, items, target, targetSelectionKey, refresh]);
+
+  const visibleItems = useMemo(() => {
+    const visible = applyInboxFilters(
+      items,
+      activeFilters,
+      searchInput,
+      Date.now(),
+      source,
+    );
+    if (!target || source !== "github") return visible;
+    const targeted =
+      items.find((item) => inboxItemMatchesLinkedWorkItem(item, target)) ??
+      (targetItem && inboxItemMatchesLinkedWorkItem(targetItem, target)
+        ? targetItem
+        : null);
+    if (!targeted || visible.includes(targeted)) return visible;
+    return [targeted, ...visible];
+  }, [activeFilters, items, searchInput, source, target, targetItem]);
+
   const inboxSeenTick = useInboxSeenTick();
   const sourceEntries = useMemo(
     () =>
@@ -485,19 +555,31 @@ export function InboxView({
   const narrowedByUser = searchNarrowed || filtersActive;
   const sourceError = providerErrors[source] ?? null;
 
+  const selectedByKey = visibleItems.find(
+    (item) => inboxItemKey(item) === selectedKey,
+  );
+  const waitingForTarget =
+    !!targetSelectionKey && selectedKey === targetSelectionKey;
   const selected =
-    visibleItems.find((item) => inboxItemKey(item) === selectedKey) ??
-    visibleItems[0] ??
-    null;
+    selectedByKey ?? (waitingForTarget ? null : visibleItems[0]) ?? null;
 
   useEffect(() => {
     if (!selected) {
-      setSelectedKey(null);
+      if (!targetSelectionKey) setSelectedKey(null);
       return;
     }
     const key = inboxItemKey(selected);
+    // Keep waiting while the exact cache-miss lookup loads. Otherwise the
+    // current list's first row replaces the requested key.
+    if (
+      targetSelectionKey &&
+      selectedKey === targetSelectionKey &&
+      key !== targetSelectionKey
+    ) {
+      return;
+    }
     if (key !== selectedKey) setSelectedKey(key);
-  }, [selected, selectedKey]);
+  }, [selected, selectedKey, targetSelectionKey]);
 
   useInboxItemSeen(
     selected
@@ -656,6 +738,10 @@ export function InboxView({
             {visibleItems.map((item) => {
               const key = inboxItemKey(item);
               const projectId = projectKey(item.projectPath);
+              const relatedSessions = relatedSessionsForInboxItem(
+                item,
+                sessions,
+              );
               return (
                 <li key={key}>
                   <InboxCard
@@ -669,6 +755,7 @@ export function InboxView({
                       groupCustomColors,
                       projectName(item.projectPath),
                     )}
+                    relatedSessionCount={relatedSessions.length}
                     onSelect={() => {
                       markInboxItemSeen({
                         key,
@@ -744,14 +831,39 @@ export function InboxView({
             ref={detailLock}
             className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-none"
           >
-            <InboxDetailBody
-              item={selected}
-              cwd={cwd}
-              projects={projectOptions}
-              revision={refresh}
-              onDiscuss={() => setDiscussionOpen(true)}
-              onStart={onStart}
-            />
+            {waitingForTarget && !selected ? (
+              targetError ? (
+                <p
+                  role="alert"
+                  className="px-4 py-3 text-[12px] text-content/70"
+                >
+                  Could not open the linked GitHub item: {targetError}
+                </p>
+              ) : (
+                <div
+                  role="status"
+                  className="flex items-center gap-2 px-4 py-3 text-[12px] text-content/50"
+                >
+                  <LoaderCircle className="size-3.5 animate-spin" />
+                  Loading linked GitHub item…
+                </div>
+              )
+            ) : (
+              <InboxDetailBody
+                item={selected}
+                cwd={cwd}
+                projects={projectOptions}
+                revision={refresh}
+                relatedSessions={
+                  selected
+                    ? relatedSessionsForInboxItem(selected, sessions)
+                    : []
+                }
+                onDiscuss={() => setDiscussionOpen(true)}
+                onStart={onStart}
+                onOpenSession={onOpenSession}
+              />
+            )}
           </div>
           {discussionOpen && selected ? (
             <InboxDiscussionPanel
@@ -775,15 +887,19 @@ function InboxDetailBody({
   cwd,
   projects,
   revision = 0,
+  relatedSessions,
   onDiscuss,
   onStart,
+  onOpenSession,
 }: {
   item: InboxItem | null;
   cwd: string;
   projects: InboxProjectOption[];
   revision?: number;
+  relatedSessions: readonly SessionSummary[];
   onDiscuss?: () => void;
   onStart?: (item: InboxItem, body?: string) => void | Promise<void>;
+  onOpenSession?: (sessionId: string) => void | Promise<void>;
 }) {
   if (!item) {
     return (
@@ -802,8 +918,10 @@ function InboxDetailBody({
       cwd={cwd}
       projects={projects}
       revision={revision}
+      relatedSessions={relatedSessions}
       onDiscuss={onDiscuss}
       onStart={onStart}
+      onOpenSession={onOpenSession}
     />
   );
 }
@@ -848,6 +966,7 @@ function InboxCard({
   logoPath,
   mascotName,
   mascotColor,
+  relatedSessionCount,
   onSelect,
 }: {
   item: InboxItem;
@@ -855,6 +974,7 @@ function InboxCard({
   logoPath: string | null;
   mascotName: string | null;
   mascotColor: string;
+  relatedSessionCount: number;
   onSelect: () => void;
 }) {
   useInboxSeenTick();
@@ -876,7 +996,7 @@ function InboxCard({
       aria-current={active ? "true" : undefined}
       aria-label={`${status.label} ${kindLabel.toLowerCase()} ${inboxItemRef(
         item,
-      )}: ${item.title}${unseen ? ", new" : ""}`}
+      )}: ${item.title}${unseen ? ", new" : ""}${relatedSessionCount > 0 ? `, ${relatedSessionCount} related ${relatedSessionCount === 1 ? "thread" : "threads"}` : ""}`}
       onClick={onSelect}
       className={`flex w-full flex-col rounded-md border px-2.5 py-2 text-left ${
         active
@@ -898,8 +1018,17 @@ function InboxCard({
             {kindLabel} · {inboxItemRef(item)}
           </span>
         </span>
-        {time || unseen ? (
+        {relatedSessionCount > 0 || time || unseen ? (
           <span className="flex shrink-0 items-center gap-1.5">
+            {relatedSessionCount > 0 ? (
+              <span
+                title={`${relatedSessionCount} related ${relatedSessionCount === 1 ? "thread" : "threads"}`}
+                className="inline-flex items-center gap-0.5 text-[11px] tabular-nums text-accent"
+              >
+                <MessageMultiple className="size-3" strokeWidth={1.75} />
+                {relatedSessionCount}
+              </span>
+            ) : null}
             {time ? (
               <span className="text-[11px] tabular-nums text-content/45">
                 {time}
@@ -949,15 +1078,19 @@ function InboxDetail({
   cwd,
   projects,
   revision,
+  relatedSessions,
   onDiscuss,
   onStart,
+  onOpenSession,
 }: {
   item: InboxItem;
   cwd: string;
   projects: InboxProjectOption[];
   revision: number;
+  relatedSessions: readonly SessionSummary[];
   onDiscuss?: () => void;
   onStart?: (item: InboxItem, body?: string) => void | Promise<void>;
+  onOpenSession?: (sessionId: string) => void | Promise<void>;
 }) {
   const linear = item.provider === "linear";
   const isPr = !linear && item.kind === "pr";
@@ -966,15 +1099,25 @@ function InboxDetail({
   const cached = linear
     ? peekLinearIssueDetails(item.id ?? "")
     : githubKind
-      ? peekGithubWorkItemDetails(item.projectPath, githubKind, item.number)
+      ? peekGithubWorkItemDetails(
+          item.projectPath,
+          item.repo,
+          githubKind,
+          item.number,
+        )
       : null;
   const cachedDiff = isPr
-    ? peekGithubPrDiff(item.projectPath, item.number)
+    ? peekGithubPrDiff(item.projectPath, item.repo, item.number)
     : null;
   const cachedThread = linear
     ? peekLinearIssueThread(item.id ?? "")
     : githubKind
-      ? peekGithubWorkItemThread(item.projectPath, githubKind, item.number)
+      ? peekGithubWorkItemThread(
+          item.projectPath,
+          item.repo,
+          githubKind,
+          item.number,
+        )
       : null;
   const [details, setDetails] = useState<GithubWorkItemDetails | null>(cached);
   const [loading, setLoading] = useState(cached == null);
@@ -1034,7 +1177,12 @@ function InboxDetail({
     const cachedDetails = linear
       ? peekLinearIssueDetails(item.id ?? "")
       : githubKind
-        ? peekGithubWorkItemDetails(item.projectPath, githubKind, item.number)
+        ? peekGithubWorkItemDetails(
+            item.projectPath,
+            item.repo,
+            githubKind,
+            item.number,
+          )
         : null;
     if (cachedDetails) {
       setDetails(cachedDetails);
@@ -1050,7 +1198,12 @@ function InboxDetail({
         ? linearIssueDetails(item.id)
         : Promise.reject(new Error("Missing Linear issue"))
       : githubKind
-        ? githubWorkItemDetails(item.projectPath, githubKind, item.number)
+        ? githubWorkItemDetails(
+            item.projectPath,
+            item.repo,
+            githubKind,
+            item.number,
+          )
         : Promise.reject(new Error("Unknown inbox item"));
     void pending
       .then((next) => {
@@ -1069,7 +1222,15 @@ function InboxDetail({
     return () => {
       cancelled = true;
     };
-  }, [githubKind, item.id, item.number, item.projectPath, linear, revision]);
+  }, [
+    githubKind,
+    item.id,
+    item.number,
+    item.projectPath,
+    item.repo,
+    linear,
+    revision,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1106,6 +1267,7 @@ function InboxDetail({
     if (!githubKind) return;
     const cachedThread = peekGithubWorkItemThread(
       item.projectPath,
+      item.repo,
       githubKind,
       item.number,
     );
@@ -1118,7 +1280,12 @@ function InboxDetail({
       setThreadError(null);
       setThread(null);
     }
-    void githubWorkItemThread(item.projectPath, githubKind, item.number)
+    void githubWorkItemThread(
+      item.projectPath,
+      item.repo,
+      githubKind,
+      item.number,
+    )
       .then((next) => {
         if (cancelled) return;
         setThread(next);
@@ -1135,12 +1302,24 @@ function InboxDetail({
     return () => {
       cancelled = true;
     };
-  }, [githubKind, item.id, item.number, item.projectPath, linear, revision]);
+  }, [
+    githubKind,
+    item.id,
+    item.number,
+    item.projectPath,
+    item.repo,
+    linear,
+    revision,
+  ]);
 
   useEffect(() => {
     if (!isPr || tab !== "code") return;
     let cancelled = false;
-    const cachedDiff = peekGithubPrDiff(item.projectPath, item.number);
+    const cachedDiff = peekGithubPrDiff(
+      item.projectPath,
+      item.repo,
+      item.number,
+    );
     if (cachedDiff) {
       setPrDiff(cachedDiff);
       setDiffLoading(false);
@@ -1150,7 +1329,7 @@ function InboxDetail({
       setDiffError(null);
       setPrDiff(null);
     }
-    void githubPrDiff(item.projectPath, item.number)
+    void githubPrDiff(item.projectPath, item.repo, item.number)
       .then((next) => {
         if (cancelled) return;
         setPrDiff(next);
@@ -1167,7 +1346,7 @@ function InboxDetail({
     return () => {
       cancelled = true;
     };
-  }, [isPr, item.number, item.projectPath, revision, tab]);
+  }, [isPr, item.number, item.projectPath, item.repo, revision, tab]);
 
   const postComment = async (body: string) => {
     setPosting(true);
@@ -1187,6 +1366,7 @@ function InboxDetail({
       if (!githubKind) throw new Error("Unknown inbox item");
       await githubWorkItemComment(
         item.projectPath,
+        item.repo,
         githubKind,
         item.number,
         body,
@@ -1197,6 +1377,7 @@ function InboxDetail({
         setThread(
           await githubWorkItemThread(
             item.projectPath,
+            item.repo,
             githubKind,
             item.number,
             {
@@ -1301,6 +1482,31 @@ function InboxDetail({
             {item.labels.map((label) => (
               <InboxLabel key={label.name} label={label} />
             ))}
+          </div>
+        ) : null}
+        {relatedSessions.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-0.5 inline-flex items-center gap-1 text-[11px] text-content/45">
+              <MessageMultiple className="size-3.5" strokeWidth={1.75} />
+              Related {relatedSessions.length === 1 ? "thread" : "threads"}
+            </span>
+            {relatedSessions.map((session) => {
+              const title = sessionDisplayTitle(session.title, session.harness);
+              return (
+                <button
+                  key={session.id}
+                  type="button"
+                  title={`Open thread: ${title}`}
+                  onClick={() => void onOpenSession?.(session.id)}
+                  className="inline-flex max-w-64 items-center gap-1 rounded-md bg-content/5 px-2 py-1 text-[11px] text-content/70 hover:bg-content/10 hover:text-content"
+                >
+                  <span className="truncate">{title}</span>
+                  {session.archived ? (
+                    <span className="shrink-0 text-content/40">Archived</span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
         ) : null}
         <div className="flex flex-wrap items-center gap-2 pt-1">

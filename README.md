@@ -100,6 +100,26 @@ Changes reach other windows immediately and separate app instances when they
 regain focus. Frontend-only browser previews (`pnpm run dev`) still use
 origin-local storage because they do not have the desktop persistence backend.
 
+## GitHub-linked conversations
+
+Start a coding conversation from Inbox with **Send to agent**, or refer to one
+issue/PR in a message using a GitHub URL, `issue #42`, or `PR #42`. Existing
+unlinked conversations can acquire a link from a later message without renaming
+the conversation.
+Number-only references use the current project's GitHub repository. An explicit
+GitHub URL keeps its own repository, even when the checkout belongs to another.
+Conflicting references are left unlinked rather than guessed.
+
+Saved conversations show an issue/PR badge in the session sidebar. Click it to
+open that item in Inbox; Cmd/Ctrl-click or middle-click opens GitHub instead.
+Inbox displays **Related threads**, including archived conversations and those
+from other projects. Click a thread to reopen it. Links survive app restarts.
+An item hidden by Inbox filters is still revealed when opened from its badge.
+
+Each conversation links to at most one GitHub item; later references do not
+replace an existing link. Linear linking is not supported, and temporary Inbox
+**Ask** discussions remain outside saved history.
+
 ## Checks and builds
 
 ```bash
