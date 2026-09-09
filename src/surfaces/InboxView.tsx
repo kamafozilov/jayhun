@@ -68,6 +68,7 @@ import {
 } from "../lib/githubTasks";
 import {
   applyInboxFilters,
+  ALL_INBOX_STATUS_FILTER,
   hasActiveInboxFilters,
   linearProjectOptions,
   inboxFetchState,
@@ -614,21 +615,42 @@ export function InboxView({
             <LoaderCircle className="size-4 animate-spin" strokeWidth={1.75} />
           </div>
         ) : visibleItems.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] text-content/50">
-            {narrowedByUser
-              ? searchNarrowed
-                ? source === "linear"
-                  ? "No matching Linear issues"
-                  : "No matching issues or pull requests"
-                : source === "linear"
-                  ? "No Linear issues match these filters"
-                  : "No issues or pull requests match these filters"
-              : source === "linear"
-                ? "No Linear issues"
-                : projects.length === 0
-                  ? "Open a project to fill the inbox"
-                  : "No matching issues or pull requests"}
-          </p>
+          <div className="px-3 py-2 text-[12px] text-content/50">
+            <p>
+              {source === "github" && projects.length === 0
+                ? "Open a project to fill the inbox"
+                : !searchNarrowed && fetchState === "open"
+                  ? source === "linear"
+                    ? "No open Linear issues match these filters"
+                    : "No open issues or pull requests match these filters"
+                  : narrowedByUser
+                    ? searchNarrowed
+                      ? source === "linear"
+                        ? "No matching Linear issues"
+                        : "No matching issues or pull requests"
+                      : source === "linear"
+                        ? "No Linear issues match these filters"
+                        : "No issues or pull requests match these filters"
+                    : source === "linear"
+                      ? "No Linear issues"
+                      : "No matching issues or pull requests"}
+            </p>
+            {fetchState === "open" &&
+            (source === "linear" || projects.length > 0) ? (
+              <button
+                type="button"
+                onClick={() =>
+                  onFiltersChange({
+                    ...activeFilters,
+                    status: ALL_INBOX_STATUS_FILTER,
+                  })
+                }
+                className="mt-2 rounded-md px-2 py-1 text-content/80 hover:bg-content/10 hover:text-content"
+              >
+                View all statuses
+              </button>
+            ) : null}
+          </div>
         ) : (
           <ul className="flex flex-col gap-0.5 p-1.5">
             {visibleItems.map((item) => {

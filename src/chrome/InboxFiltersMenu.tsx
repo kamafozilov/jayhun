@@ -4,7 +4,6 @@ import type { InboxKind } from "../lib/githubTasks";
 import {
   DEFAULT_INBOX_FILTERS,
   ALL_INBOX_STATUS_FILTER,
-  hasActiveInboxFilters,
   type InboxFilters,
   type InboxSource,
   type InboxTimeFilter,
@@ -144,9 +143,15 @@ export function InboxFiltersMenu({
       <SectionLabel>Status</SectionLabel>
       <FilterItem
         label="All statuses"
-        checked={!filters.status.open && !filters.status.closed &&
-          (source === "linear" || (!filters.status.draft && !filters.status.merged))}
-        onClick={() => onChange({ ...filters, status: ALL_INBOX_STATUS_FILTER })}
+        checked={
+          !filters.status.open &&
+          !filters.status.closed &&
+          (source === "linear" ||
+            (!filters.status.draft && !filters.status.merged))
+        }
+        onClick={() =>
+          onChange({ ...filters, status: ALL_INBOX_STATUS_FILTER })
+        }
       />
       <FilterItem
         label="Open"
@@ -249,23 +254,19 @@ export function InboxFiltersMenu({
         </>
       ) : null}
 
-      {hasActiveInboxFilters(filters, source, hiddenLinearTeamIds) ? (
-        <>
-          <div role="separator" className="my-1 h-px bg-content/10" />
-          <button
-            type="button"
-            role="menuitem"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              onChange({ ...DEFAULT_INBOX_FILTERS, status: ALL_INBOX_STATUS_FILTER });
-              if (teamsActive) onLinearTeamsChange([]);
-            }}
-            className="flex h-7 w-full items-center rounded-lg px-2 text-left text-[13px] leading-none text-content/70 hover:bg-content/5 hover:text-content"
-          >
-            Clear filters
-          </button>
-        </>
-      ) : null}
+      <div role="separator" className="my-1 h-px bg-content/10" />
+      <button
+        type="button"
+        role="menuitem"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          onChange(DEFAULT_INBOX_FILTERS);
+          if (teamsActive) onLinearTeamsChange([]);
+        }}
+        className="flex h-7 w-full items-center rounded-lg px-2 text-left text-[13px] leading-none text-content/70 hover:bg-content/5 hover:text-content"
+      >
+        Clear filters
+      </button>
     </Popover>
   );
 }

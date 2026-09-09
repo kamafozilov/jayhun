@@ -6,6 +6,7 @@
 - Preserve the last saved default provider and per-provider models across desktop development, worktrees, and releases, loading them before session creation.
 - Use Codex when no default provider has been saved, without overriding an explicit choice.
 - Avoid opening Cursor login during background model catalog discovery.
+- Restore open issues and draft/open pull requests when clearing inbox filters; keep all statuses as an explicit choice, including from an empty inbox.
 
 ## [0.1.43] - 2026-09-09
 
