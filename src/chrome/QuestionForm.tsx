@@ -1,280 +1,147 @@
-import { useEffect, useMemo, useState } from "react";
+import { useId, useState, type RefObject } from "react";
 import { Check, MessageSquare } from "./icons";
-import {
-  CUSTOM_OPTION_ID,
-  buildQuestionReply,
-  isOtherOption,
-  questionIsComplete,
-  type UserQuestion,
-  type UserQuestionPrompt,
-  type UserQuestionReply,
-} from "../lib/userQuestion";
+import { isOtherOption } from "../lib/userQuestion";
+import { isImeComposition } from "../lib/keyboard";
+import type { QuestionAnswer } from "./useQuestionAnswer";
 
 type Props = {
-  prompt: UserQuestionPrompt;
-  onReply: (requestId: number, reply: UserQuestionReply) => void;
+  answer: QuestionAnswer;
+  optionsRef: RefObject<HTMLDivElement | null>;
+  onFocusInput: () => void;
 };
 
-export function QuestionForm({ prompt, onReply }: Props) {
-  const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string[]>>({});
-  const [custom, setCustom] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    setStep(0);
-    setAnswers({});
-    setCustom({});
-  }, [prompt.requestId]);
-
-  const questions = prompt.questions;
-  const total = questions.length;
-  const index = Math.min(step, Math.max(total - 1, 0));
-  const question = questions[index];
-  const last = index >= total - 1;
-  const ready = useMemo(
-    () => (question ? questionIsComplete(question, answers, custom) : false),
-    [answers, custom, question],
-  );
-
-  const finish = (nextAnswers = answers, nextCustom = custom) => {
-    onReply(prompt.requestId, buildQuestionReply(questions, nextAnswers, nextCustom));
-  };
-
-  const skipCurrent = () => {
-    if (!question) {
-      finish();
-      return;
-    }
-    const nextAnswers = { ...answers };
-    const nextCustom = { ...custom };
-    delete nextAnswers[question.id];
-    delete nextCustom[question.id];
-    if (last) {
-      finish(nextAnswers, nextCustom);
-      return;
-    }
-    setAnswers(nextAnswers);
-    setCustom(nextCustom);
-    setStep(index + 1);
-  };
-
-  const continueCurrent = () => {
-    if (!question || !ready) return;
-    if (last) {
-      finish();
-      return;
-    }
-    setStep(index + 1);
-  };
-
+/** Question choices share the composer's frame and use its input for free text. */
+export function QuestionForm({ answer, optionsRef, onFocusInput }: Props) {
+  const [active, setActive] = useState(0);
+  const titleId = useId();
+  const question = answer.question;
   if (!question) return null;
-
-  const title = question.header?.trim() || prompt.title?.trim() || "Question";
+  const options = question.options.filter((option) => !isOtherOption(option));
 
   return (
-    <div className="px-1.5 pb-1.5" data-question-form>
-      <form
-        className="rounded-lg border border-content/10 bg-content/3 px-3 py-2.5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          continueCurrent();
-        }}
-      >
-        <div className="flex items-center gap-1.5">
-          <MessageSquare
-            className="size-3.5 shrink-0 text-content/45"
-            strokeWidth={1.75}
-          />
-          <span className="min-w-0 flex-1 truncate text-[11px] text-content/50">
-            {title}
+    <section
+      data-question-form
+      className="min-w-0 px-3 pt-3"
+      aria-labelledby={titleId}
+    >
+      <div className="flex items-center gap-2 text-[11px] text-content/60">
+        <MessageSquare
+          aria-hidden
+          className="size-3.5 shrink-0"
+          strokeWidth={1.5}
+        />
+        <span className="min-w-0 flex-1 truncate">
+          {question.header || "Question"}
+        </span>
+        {answer.total > 1 ? (
+          <span className="shrink-0 tabular-nums">
+            {answer.step + 1} of {answer.total}
           </span>
-          {total > 1 ? (
-            <span className="shrink-0 text-[11px] text-content/40">
-              {index + 1} of {total}
-            </span>
-          ) : null}
-          <button
-            type="button"
-            className="h-6 shrink-0 rounded-md px-1.5 text-[11px] text-content/55 hover:bg-content/10 hover:text-content"
-            onClick={skipCurrent}
-          >
-            Skip
-          </button>
-        </div>
-        <div className="mt-2">
-          <QuestionFields
-            key={question.id}
-            question={question}
-            selected={answers[question.id] ?? []}
-            custom={custom[question.id] ?? ""}
-            onSelect={(optionId) =>
-              setAnswers((current) => ({
-                ...current,
-                [question.id]: nextSelection(
-                  question,
-                  current[question.id] ?? [],
-                  optionId,
-                ),
-              }))
-            }
-            onCustom={(value) => {
-              setCustom((current) => ({ ...current, [question.id]: value }));
-              setAnswers((current) => {
-                const selected = current[question.id] ?? [];
-                if (question.multiSelect) {
-                  const without = selected.filter(
-                    (id) => !isCustomId(question, id),
-                  );
-                  return {
-                    ...current,
-                    [question.id]: [...without, customOptionId(question)],
-                  };
-                }
-                return {
-                  ...current,
-                  [question.id]: [customOptionId(question)],
-                };
-              });
-            }}
-          />
-        </div>
-        <div className="mt-2.5 flex justify-end">
-          <button
-            type="submit"
-            disabled={!ready}
-            className="h-6 rounded-md bg-content px-2.5 text-[11px] font-medium text-background-base hover:bg-content/80 disabled:opacity-40"
-          >
-            Continue
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function QuestionFields({
-  question,
-  selected,
-  custom,
-  onSelect,
-  onCustom,
-}: {
-  question: UserQuestion;
-  selected: string[];
-  custom: string;
-  onSelect: (optionId: string) => void;
-  onCustom: (value: string) => void;
-}) {
-  const options = displayOptions(question);
-  const customSelected = selected.some((id) => isCustomId(question, id));
-  const customId = customOptionId(question);
-
-  return (
-    <fieldset className="min-w-0" aria-label={question.header || question.prompt}>
-      <p className="text-[13px] font-medium leading-snug text-content">
+        ) : null}
+        <button
+          type="button"
+          onClick={answer.skip}
+          className="min-h-6 rounded px-1.5 hover:bg-content/10 hover:text-content focus-visible:outline-2 focus-visible:outline-content"
+        >
+          Skip
+        </button>
+      </div>
+      <p
+        id={titleId}
+        className="mt-2 text-[13px] font-medium leading-5 text-content"
+        aria-live="polite"
+      >
         {question.prompt}
       </p>
       {question.multiSelect ? (
-        <p className="mt-0.5 text-[11px] text-content/40">Select all that apply</p>
+        <p className="mt-1 text-[11px] text-content/60">
+          Select all that apply, then send your answer.
+        </p>
       ) : null}
-      {options.length === 0 && question.allowCustom ? (
-        <input
-          value={custom}
-          onChange={(event) => onCustom(event.target.value)}
-          placeholder="Type your answer"
-          className="mt-1.5 w-full rounded-md border border-content/15 bg-transparent px-2 py-1 text-[12px] text-content outline-none placeholder:text-content/35 focus:border-content/30"
-        />
-      ) : (
-        <div className="mt-1.5 flex max-h-52 flex-col gap-1 overflow-y-auto" role="group">
-          {options.map((option) => {
-            const isCustom =
-              isOtherOption(option) || option.id === CUSTOM_OPTION_ID;
-            const active = selected.includes(option.id);
+      {options.length ? (
+        <div
+          ref={optionsRef}
+          role="group"
+          aria-labelledby={titleId}
+          className="mt-2 grid max-h-52 auto-rows-fr gap-1 overflow-y-auto overscroll-contain p-0.5 -mx-0.5"
+          onKeyDown={(event) => {
+            if (isImeComposition(event.nativeEvent)) return;
+            if (event.repeat && (event.key === "Enter" || event.key === " ")) {
+              event.preventDefault();
+              return;
+            }
+            const buttons = [
+              ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                "[data-question-option]",
+              ),
+            ];
+            const index = buttons.indexOf(
+              document.activeElement as HTMLButtonElement,
+            );
+            let next: number;
+            if (event.key === "ArrowDown") next = (index + 1) % buttons.length;
+            else if (event.key === "ArrowUp")
+              next = (index - 1 + buttons.length) % buttons.length;
+            else if (event.key === "Home") next = 0;
+            else if (event.key === "End") next = buttons.length - 1;
+            else if (event.key === "Escape" && question.allowCustom) {
+              event.preventDefault();
+              event.stopPropagation();
+              onFocusInput();
+              return;
+            } else return;
+            event.preventDefault();
+            event.stopPropagation();
+            buttons[next]?.focus();
+          }}
+        >
+          {options.map((option, index) => {
+            const selected = answer.selected.includes(option.id);
             return (
-              <div key={option.id}>
-                <button
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => onSelect(option.id)}
-                  className={`flex w-full items-start gap-2 rounded-md border px-2 py-1.5 text-left ${
-                    active
-                      ? "border-content/35 bg-content/10"
-                      : "border-content/10 hover:bg-content/5"
-                  }`}
+              <button
+                key={option.id}
+                type="button"
+                data-question-option
+                tabIndex={index === active ? 0 : -1}
+                aria-pressed={question.multiSelect ? selected : undefined}
+                onFocus={() => setActive(index)}
+                onClick={(event) => {
+                  if (event.detail < 2) answer.select(option.id);
+                }}
+                className={`flex min-h-11 w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-start focus-visible:outline-2 focus-visible:outline-content ${selected ? "border-content/35 bg-content/10" : "border-content/10 hover:border-content/25 hover:bg-content/5"}`}
+              >
+                <span
+                  aria-hidden
+                  className={`grid size-5 shrink-0 place-items-center rounded border text-[10px] tabular-nums ${selected ? "border-content bg-content text-background-base" : "border-content/15 text-content/50"}`}
                 >
-                  <span
-                    aria-hidden
-                    className={`mt-0.5 grid size-3.5 shrink-0 place-items-center border ${
-                      question.multiSelect ? "rounded-[3px]" : "rounded-full"
-                    } ${
-                      active
-                        ? "border-content bg-content text-background-base"
-                        : "border-content/30"
-                    }`}
-                  >
-                    {active ? (
-                      <Check className="size-2.5" strokeWidth={2.5} />
-                    ) : null}
+                  {selected ? <Check className="size-3" /> : index + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[12px] leading-4 text-content">
+                    {option.label}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[12px] leading-snug text-content">
-                      {option.label}
+                  {option.description ? (
+                    <span className="mt-0.5 block text-[11px] leading-4 text-content/60">
+                      {option.description}
                     </span>
-                    {option.description ? (
-                      <span className="mt-0.5 block text-[11px] leading-snug text-content/50">
-                        {option.description}
-                      </span>
-                    ) : null}
-                  </span>
-                </button>
-                {isCustom && (active || customSelected) ? (
-                  <input
-                    value={custom}
-                    onChange={(event) => onCustom(event.target.value)}
-                    placeholder="Type your answer"
-                    className="mt-1 w-full rounded-md border border-content/15 bg-transparent px-2 py-1 text-[12px] text-content outline-none placeholder:text-content/35 focus:border-content/30"
-                    onClick={(event) => event.stopPropagation()}
-                    onFocus={() => {
-                      if (!customSelected) onSelect(customId);
-                    }}
-                  />
-                ) : null}
-              </div>
+                  ) : null}
+                </span>
+              </button>
             );
           })}
         </div>
-      )}
-    </fieldset>
+      ) : null}
+      {question.allowCustom ? (
+        <button
+          type="button"
+          onClick={onFocusInput}
+          className="mt-2 w-full rounded py-1 text-start text-[11px] text-content/60 hover:text-content focus-visible:outline-2 focus-visible:outline-content"
+        >
+          {options.length
+            ? "Choose an option above, or write your own answer below."
+            : "Write your answer below."}
+        </button>
+      ) : null}
+    </section>
   );
-}
-
-function displayOptions(question: UserQuestion): UserQuestion["options"] {
-  if (question.options.length === 0) return question.options;
-  if (question.options.some(isOtherOption) || !question.allowCustom) {
-    return question.options;
-  }
-  return [...question.options, { id: CUSTOM_OPTION_ID, label: "Other" }];
-}
-
-function customOptionId(question: UserQuestion): string {
-  return question.options.find(isOtherOption)?.id ?? CUSTOM_OPTION_ID;
-}
-
-function isCustomId(question: UserQuestion, optionId: string): boolean {
-  return optionId === CUSTOM_OPTION_ID || optionId === customOptionId(question);
-}
-
-function nextSelection(
-  question: UserQuestion,
-  current: string[],
-  optionId: string,
-): string[] {
-  if (!question.multiSelect) return [optionId];
-  if (current.includes(optionId)) {
-    return current.filter((id) => id !== optionId);
-  }
-  if (isCustomId(question, optionId)) {
-    return [...current.filter((id) => !isCustomId(question, id)), optionId];
-  }
-  return [...current, optionId];
 }

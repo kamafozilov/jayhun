@@ -14,6 +14,8 @@ export type UserQuestion = {
   prompt: string;
   multiSelect: boolean;
   allowCustom: boolean;
+  /** Mask provider-marked sensitive free-text answers. */
+  secret?: boolean;
   options: UserQuestionOption[];
 };
 

@@ -98,6 +98,7 @@ import { HandoffMiniCard } from "./HandoffMiniCard";
 import { ModelPicker } from "./ModelPicker";
 import { ModelSettings } from "./ModelSettings";
 import { QuestionForm } from "./QuestionForm";
+import { useQuestionAnswer } from "./useQuestionAnswer";
 import { SkillPicker } from "./SkillPicker";
 import { projectKey } from "../lib/paths";
 import { consumeQuoteRequest, type QuoteRequest } from "../lib/quoteDraft";
@@ -430,6 +431,21 @@ export function Composer({
   children,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const secretRef = useRef<HTMLInputElement>(null);
+  const questionOptionsRef = useRef<HTMLDivElement>(null);
+  const previousAnswerKey = useRef<string | undefined>(undefined);
+  const answering = !!question && !!onQuestionReply;
+  const answer = useQuestionAnswer(
+    answering ? question : undefined,
+    onQuestionReply,
+  );
+  const answerKey = answering
+    ? `${question.requestId}:${answer.step}`
+    : undefined;
+  const focusAnswerInput = useCallback(
+    () => (secretRef.current ?? ref.current)?.focus(),
+    [],
+  );
   const boxRef = useRef<HTMLDivElement>(null);
   const plusRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
@@ -480,6 +496,7 @@ export function Composer({
   const mentionOpen =
     mention !== null && (looksLikeProject(cwd) || notesEnabled);
   const navigationEmpty =
+    !answering &&
     draft.length === 0 &&
     attachments.length === 0 &&
     !inboxCard &&
@@ -510,7 +527,8 @@ export function Composer({
     ? Number.POSITIVE_INFINITY
     : undefined;
   const rankedSkills = rankSkills(slashItems, slash?.query ?? "", skillLimit);
-  const attachmentsSupported = harnessSupportsAttachments(harness);
+  const attachmentsSupported =
+    !answering && harnessSupportsAttachments(harness);
   const skillNames = useMemo(
     () => new Set(slashItems.map((skill) => skill.invocation)),
     [slashItems],
@@ -670,7 +688,7 @@ export function Composer({
 
   useEffect(() => {
     const el = ref.current;
-    if (!el || !initialDraft) return;
+    if (!el || !initialDraft || answering) return;
     if (el.value !== initialDraft) el.value = initialDraft;
     resizeTextarea(el);
   }, [initialDraft]);
@@ -678,6 +696,29 @@ export function Composer({
   useEffect(() => {
     onDraftChange?.(draft);
   }, [draft, onDraftChange]);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const text = answering ? answer.text : draft;
+    if (el && el.value !== text) {
+      el.value = text;
+      resizeTextarea(el);
+    }
+    if (previousAnswerKey.current === answerKey) return;
+    previousAnswerKey.current = answerKey;
+    setSlash(null);
+    setMention(null);
+    setPlusOpen(false);
+    setCreatingSkill(false);
+    if (focused) {
+      const first =
+        questionOptionsRef.current?.querySelector<HTMLButtonElement>(
+          "[data-question-option]",
+        );
+      if (answering && first) first.focus();
+      else focusAnswerInput();
+    }
+  }, [answerKey, answering, answer.text, draft, focused, focusAnswerInput]);
 
   const syncHighlightScroll = useCallback((el: HTMLTextAreaElement) => {
     const highlight = highlightRef.current;
@@ -698,10 +739,10 @@ export function Composer({
       if (ref.current === el) syncHighlightScroll(el);
     });
     return () => cancelAnimationFrame(frame);
-  }, [draft, syncHighlightScroll]);
+  }, [draft, answer.text, syncHighlightScroll]);
 
   const syncTokensFromTextarea = (el: HTMLTextAreaElement) => {
-    if (creatingSkill) return;
+    if (creatingSkill || answering) return;
     const cursor = el.selectionStart ?? 0;
     const token = slashTokenAt(el.value, cursor, hasNativeCommands(harness));
     setSlash(token);
@@ -710,7 +751,7 @@ export function Composer({
 
   useEffect(() => {
     const el = ref.current;
-    if (!el || !quoteRequest) return;
+    if (!el || !quoteRequest || answering) return;
 
     const result = consumeQuoteRequest(
       el.value,
@@ -731,7 +772,7 @@ export function Composer({
       el.focus();
     }
     onQuoteRequestConsumed?.(quoteRequest.id);
-  }, [onQuoteRequestConsumed, quoteRequest, syncHasValue]);
+  }, [onQuoteRequestConsumed, quoteRequest, syncHasValue, answering]);
 
   const pickSkill = useCallback(
     (skill: Skill) => {
@@ -902,6 +943,10 @@ export function Composer({
   }, [addAttachments, attachmentsSupported, enabled]);
 
   const submit = (value: string) => {
+    if (answering) {
+      answer.submit();
+      return;
+    }
     if (isCompactCommand(value)) {
       if (!onCompactContext?.()) return;
       if (!ref.current) return;
@@ -944,6 +989,27 @@ export function Composer({
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (isImeComposition(e.nativeEvent)) return;
+    if (answering) {
+      if (
+        (e.key === "ArrowDown" || e.key === "ArrowUp") &&
+        !e.currentTarget.value
+      ) {
+        const options =
+          questionOptionsRef.current?.querySelectorAll<HTMLButtonElement>(
+            "[data-question-option]",
+          );
+        if (options?.length) {
+          e.preventDefault();
+          e.stopPropagation();
+          options[e.key === "ArrowUp" ? options.length - 1 : 0].focus();
+        }
+      } else if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.repeat) answer.submit();
+      }
+      return;
+    }
     if (creatingSkill) return;
 
     if (mentionOpen) {
@@ -1062,9 +1128,6 @@ export function Composer({
       className={`relative shrink-0 ${shell ? "" : "p-1.5 pt-0"}`}
       onMouseDown={onFocus}
     >
-      {question && onQuestionReply ? (
-        <QuestionForm prompt={question} onReply={onQuestionReply} />
-      ) : null}
       {children}
       <MessageQueue
         messages={queuedMessages}
@@ -1161,7 +1224,15 @@ export function Composer({
               Drop files to attach
             </div>
           ) : null}
-          {hideTopBar ? null : (
+          {answering ? (
+            <QuestionForm
+              key={answerKey}
+              answer={answer}
+              optionsRef={questionOptionsRef}
+              onFocusInput={focusAnswerInput}
+            />
+          ) : null}
+          {hideTopBar || answering ? null : (
             <div className="flex min-w-0 items-center gap-2.5 px-3 pt-2.5">
               {hideProjectPicker ? null : (
                 <CwdPicker
@@ -1193,7 +1264,7 @@ export function Composer({
             </div>
           )}
 
-          {attachments.length > 0 ? (
+          {!answering && attachments.length > 0 ? (
             <div className="flex flex-wrap gap-1.5 px-3 pt-2">
               {attachments.map((file) => (
                 <AttachmentChip
@@ -1205,207 +1276,261 @@ export function Composer({
             </div>
           ) : null}
 
-          {inboxCard ? (
+          {!answering && inboxCard ? (
             <InboxMiniCard card={inboxCard} onDismiss={onInboxCardDismiss} />
           ) : null}
 
-          {noteCard ? (
+          {!answering && noteCard ? (
             <NoteMiniCard card={noteCard} onDismiss={onNoteCardDismiss} />
           ) : null}
 
-          {handoffCard ? (
+          {!answering && handoffCard ? (
             <HandoffMiniCard
               card={handoffCard}
               onDismiss={onHandoffCardDismiss}
             />
           ) : null}
 
-          <div className="relative">
-            <div
-              ref={highlightRef}
-              aria-hidden
-              className={`composer-highlight pointer-events-none absolute inset-0 max-h-40 overflow-hidden whitespace-pre-wrap break-words px-3 text-sm leading-5.5 text-content font-sans ${
-                shell ? "py-4" : "py-3"
-              }`}
-            >
-              <ComposerHighlight
-                text={draft}
-                names={skillNames}
-                mentions={mentionIndex.labels}
+          {answering && !answer.question?.allowCustom ? null : answer.question
+              ?.secret ? (
+            <div className="px-3 py-3">
+              <input
+                ref={secretRef}
+                type="password"
+                autoComplete="off"
+                aria-label={answer.question.prompt}
+                placeholder="Write your answer..."
+                value={answer.text}
+                onInput={(event) => answer.setText(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (isImeComposition(event.nativeEvent)) return;
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (!event.repeat) answer.submit();
+                  }
+                }}
+                className="w-full rounded bg-transparent text-sm text-content outline-none placeholder:text-content/40 focus-visible:outline-2 focus-visible:outline-content"
               />
             </div>
-            <textarea
-              ref={ref}
-              data-composer-empty={navigationEmpty ? "true" : undefined}
-              rows={1}
-              spellCheck={false}
-              defaultValue={initialDraft}
-              placeholder={
-                inboxCard
-                  ? "Add a note, or send to start…"
-                  : noteCard
-                    ? "Add a message, or send…"
-                    : handoffCard
-                      ? "Add context, or send to continue…"
-                      : shell
-                        ? "Ask, build, / for commands, @ for references... "
-                        : "Ask, build, / for commands, @ for references... "
-              }
-              className={`composer-field scrollbar-none relative max-h-40 w-full resize-none overflow-x-hidden whitespace-pre-wrap break-words bg-transparent px-3 text-sm leading-5.5 outline-none placeholder:overflow-hidden placeholder:text-ellipsis placeholder:whitespace-nowrap font-sans ${
-                shell ? "py-4" : "py-3"
-              }`}
-              onFocus={onFocus}
-              onKeyDown={onKeyDown}
-              onPaste={onPaste}
-              onScroll={(e) => syncHighlightScroll(e.currentTarget)}
-              onClick={(e) => syncTokensFromTextarea(e.currentTarget)}
-              onKeyUp={(e) => syncTokensFromTextarea(e.currentTarget)}
-              onSelect={(e) => syncTokensFromTextarea(e.currentTarget)}
-              onInput={(e) => {
-                const el = e.currentTarget;
-                resizeTextarea(el);
-                setDraft(el.value);
-                syncHasValue(el.value, attachments);
-                syncTokensFromTextarea(el);
-              }}
-            />
-          </div>
-
-          <div className="flex items-center gap-1 px-2 pb-2">
-            <div ref={plusRef} className="relative shrink-0">
-              <ToolButton
-                label="Add files or choose a mode"
-                active={plusOpen}
-                onClick={() => setPlusOpen((open) => !open)}
+          ) : (
+            <div className="relative">
+              <div
+                ref={highlightRef}
+                aria-hidden
+                className={`composer-highlight pointer-events-none absolute inset-0 max-h-40 overflow-hidden whitespace-pre-wrap break-words px-3 text-sm leading-5.5 text-content font-sans ${
+                  shell ? "py-4" : "py-3"
+                }`}
               >
-                <Plus className="size-3.5" strokeWidth={1.5} />
-              </ToolButton>
-              {plusOpen ? (
-                <Popover
-                  anchor={plusRef}
-                  side="top"
-                  align="start"
-                  width={250}
-                  onDismiss={() => setPlusOpen(false)}
-                  data-composer-plus
-                  className="p-1.5"
-                >
-                  <p className="px-2 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wide text-content/40">
-                    Add to message
-                  </p>
-                  <button
-                    type="button"
-                    disabled={!attachmentsSupported}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      setPlusOpen(false);
-                      attachFromPicker();
-                    }}
-                    className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left text-content hover:bg-content/10 disabled:cursor-not-allowed disabled:opacity-40"
+                {answering ? (
+                  answer.text
+                ) : (
+                  <ComposerHighlight
+                    text={draft}
+                    names={skillNames}
+                    mentions={mentionIndex.labels}
+                  />
+                )}
+              </div>
+              <textarea
+                ref={ref}
+                data-composer-empty={navigationEmpty ? "true" : undefined}
+                rows={1}
+                spellCheck={false}
+                defaultValue={answering ? answer.text : initialDraft}
+                aria-label={answering ? answer.question?.prompt : undefined}
+                placeholder={
+                  answering
+                    ? "Write your answer..."
+                    : inboxCard
+                      ? "Add a note, or send to start…"
+                      : noteCard
+                        ? "Add a message, or send…"
+                        : handoffCard
+                          ? "Add context, or send to continue…"
+                          : shell
+                            ? "Ask, build, / for commands, @ for references... "
+                            : "Ask, build, / for commands, @ for references... "
+                }
+                className={`composer-field scrollbar-none relative max-h-40 w-full resize-none overflow-x-hidden whitespace-pre-wrap break-words bg-transparent px-3 text-sm leading-5.5 outline-none placeholder:overflow-hidden placeholder:text-ellipsis placeholder:whitespace-nowrap font-sans ${
+                  shell ? "py-4" : "py-3"
+                }`}
+                onFocus={onFocus}
+                onKeyDown={onKeyDown}
+                onPaste={onPaste}
+                onScroll={(e) => syncHighlightScroll(e.currentTarget)}
+                onClick={(e) => syncTokensFromTextarea(e.currentTarget)}
+                onKeyUp={(e) => syncTokensFromTextarea(e.currentTarget)}
+                onSelect={(e) => syncTokensFromTextarea(e.currentTarget)}
+                onInput={(e) => {
+                  const el = e.currentTarget;
+                  resizeTextarea(el);
+                  if (answering) {
+                    answer.setText(el.value);
+                  } else {
+                    setDraft(el.value);
+                    syncHasValue(el.value, attachments);
+                    syncTokensFromTextarea(el);
+                  }
+                }}
+              />
+            </div>
+          )}
+
+          <div
+            className={`flex items-center gap-1 px-2 pb-2 ${answering ? "pt-2" : ""}`}
+          >
+            {answering ? (
+              <span className="min-w-0 flex-1 px-1 text-[10px] leading-4 text-content/50">
+                {answer.question?.multiSelect
+                  ? "Select options · Send to continue"
+                  : "↑ ↓ Navigate · Enter to choose"}
+              </span>
+            ) : (
+              <>
+                <div ref={plusRef} className="relative shrink-0">
+                  <ToolButton
+                    label="Add files or choose a mode"
+                    active={plusOpen}
+                    onClick={() => setPlusOpen((open) => !open)}
                   >
-                    <FilePlus className="mt-0.5 size-4 shrink-0" />
-                    <span className="min-w-0">
-                      <span className="block text-[13px]">Upload file</span>
-                      <span className="block text-[11px] leading-4 text-content/45">
-                        {attachmentsSupported
-                          ? "Attach files or images to this message"
-                          : `${HARNESS_TITLE[harness]} does not support attachments`}
-                      </span>
-                    </span>
-                  </button>
+                    <Plus className="size-3.5" strokeWidth={1.5} />
+                  </ToolButton>
+                  {plusOpen ? (
+                    <Popover
+                      anchor={plusRef}
+                      side="top"
+                      align="start"
+                      width={250}
+                      onDismiss={() => setPlusOpen(false)}
+                      data-composer-plus
+                      className="p-1.5"
+                    >
+                      <p className="px-2 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wide text-content/40">
+                        Add to message
+                      </p>
+                      <button
+                        type="button"
+                        disabled={!attachmentsSupported}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setPlusOpen(false);
+                          attachFromPicker();
+                        }}
+                        className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left text-content hover:bg-content/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <FilePlus className="mt-0.5 size-4 shrink-0" />
+                        <span className="min-w-0">
+                          <span className="block text-[13px]">Upload file</span>
+                          <span className="block text-[11px] leading-4 text-content/45">
+                            {attachmentsSupported
+                              ? "Attach files or images to this message"
+                              : `${HARNESS_TITLE[harness]} does not support attachments`}
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={planSelected}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setPlanSelected((selected) => !selected);
+                          setPlusOpen(false);
+                          ref.current?.focus();
+                        }}
+                        className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left text-content hover:bg-content/10"
+                      >
+                        <AiIdea className="mt-0.5 size-4 shrink-0 text-yellow-300/80" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[13px]">Plan mode</span>
+                          <span className="block text-[11px] leading-4 text-content/45">
+                            Create a plan to review before building
+                          </span>
+                        </span>
+                        {planSelected ? (
+                          <Check className="mt-0.5 size-3.5 shrink-0 text-accent" />
+                        ) : null}
+                      </button>
+                    </Popover>
+                  ) : null}
+                </div>
+                {planSelected ? (
                   <button
                     type="button"
-                    aria-pressed={planSelected}
+                    title="Turn off Plan mode"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
-                      setPlanSelected((selected) => !selected);
-                      setPlusOpen(false);
+                      setPlanSelected(false);
                       ref.current?.focus();
                     }}
-                    className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left text-content hover:bg-content/10"
+                    className="flex h-6.5 shrink-0 items-center gap-1 rounded-md bg-yellow-300/12 px-1.5 text-[11px] text-yellow-200/90 hover:bg-yellow-300/18"
                   >
-                    <AiIdea className="mt-0.5 size-4 shrink-0 text-yellow-300/80" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[13px]">Plan mode</span>
-                      <span className="block text-[11px] leading-4 text-content/45">
-                        Create a plan to review before building
-                      </span>
-                    </span>
-                    {planSelected ? (
-                      <Check className="mt-0.5 size-3.5 shrink-0 text-accent" />
-                    ) : null}
+                    <AiIdea className="size-3.5" />
+                    Plan
+                    <X className="size-3" />
                   </button>
-                </Popover>
-              ) : null}
-            </div>
-            {planSelected ? (
-              <button
-                type="button"
-                title="Turn off Plan mode"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  setPlanSelected(false);
-                  ref.current?.focus();
-                }}
-                className="flex h-6.5 shrink-0 items-center gap-1 rounded-md bg-yellow-300/12 px-1.5 text-[11px] text-yellow-200/90 hover:bg-yellow-300/18"
-              >
-                <AiIdea className="size-3.5" />
-                Plan
-                <X className="size-3" />
-              </button>
-            ) : null}
-            <div
-              className="composer-toolbar flex min-w-0 flex-1 items-center"
-              onWheel={(e) => {
-                if (
-                  e.target instanceof Element &&
-                  e.target.closest(
-                    "[data-model-picker], [data-access-picker], [data-model-settings]",
-                  )
-                ) {
-                  return;
-                }
-                const el = e.currentTarget;
-                if (el.scrollWidth <= el.clientWidth) return;
-                if (e.deltaX === 0 && e.deltaY !== 0) el.scrollLeft += e.deltaY;
-              }}
-            >
-              <div className="flex shrink-0 items-center gap-1">
-                <ModelPicker
-                  harness={harness}
-                  model={model}
-                  hotkeys={hotkeys && enabled}
-                  onChange={onModelChange}
-                  onClose={() => ref.current?.focus()}
-                />
-                <ModelSettings
-                  harness={harness}
-                  model={model}
-                  values={modelSettings}
-                  onChange={(settings) => onModelSettingsChange?.(settings)}
-                  onClose={() => ref.current?.focus()}
-                />
-                {harness !== "fx" ? (
-                  <AccessPicker
-                    value={runtimeMode}
-                    onChange={onRuntimeModeChange}
-                    onClose={() => ref.current?.focus()}
-                  />
                 ) : null}
-              </div>
-            </div>
-
+                <div
+                  className="composer-toolbar flex min-w-0 flex-1 items-center"
+                  onWheel={(e) => {
+                    if (
+                      e.target instanceof Element &&
+                      e.target.closest(
+                        "[data-model-picker], [data-access-picker], [data-model-settings]",
+                      )
+                    ) {
+                      return;
+                    }
+                    const el = e.currentTarget;
+                    if (el.scrollWidth <= el.clientWidth) return;
+                    if (e.deltaX === 0 && e.deltaY !== 0)
+                      el.scrollLeft += e.deltaY;
+                  }}
+                >
+                  <div className="flex shrink-0 items-center gap-1">
+                    <ModelPicker
+                      harness={harness}
+                      model={model}
+                      hotkeys={hotkeys && enabled}
+                      onChange={onModelChange}
+                      onClose={() => ref.current?.focus()}
+                    />
+                    <ModelSettings
+                      harness={harness}
+                      model={model}
+                      values={modelSettings}
+                      onChange={(settings) => onModelSettingsChange?.(settings)}
+                      onClose={() => ref.current?.focus()}
+                    />
+                    {harness !== "fx" ? (
+                      <AccessPicker
+                        value={runtimeMode}
+                        onChange={onRuntimeModeChange}
+                        onClose={() => ref.current?.focus()}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              </>
+            )}
             <div className="flex shrink-0 items-center gap-1">
               <ComposerAction
                 busy={busy}
-                hasValue={hasValue}
+                hasValue={answering ? answer.ready : hasValue}
+                label={
+                  answering
+                    ? answer.last
+                      ? "Send answer"
+                      : "Next question"
+                    : "Send"
+                }
                 onSend={() => submit(ref.current?.value ?? "")}
                 onStop={() => onStop?.()}
               />
             </div>
           </div>
         </div>
-        {runnerLive && runnerEnabled ? (
+        {!answering && runnerLive && runnerEnabled ? (
           <ComposerRunner
             boxRef={boxRef}
             cwd={cwd}
@@ -1489,11 +1614,13 @@ function MentionRuns({
 function ComposerAction({
   busy,
   hasValue,
+  label = "Send",
   onSend,
   onStop,
 }: {
   busy: boolean;
   hasValue: boolean;
+  label?: string;
   onSend: () => void;
   onStop: () => void;
 }) {
@@ -1503,8 +1630,8 @@ function ComposerAction({
         {hasValue ? (
           <button
             type="button"
-            title="Send"
-            aria-label="Send"
+            title={label}
+            aria-label={label}
             onClick={onSend}
             className="composer-send grid size-6.5 place-items-center rounded-md bg-white text-black hover:bg-white/90"
           >
@@ -1527,8 +1654,8 @@ function ComposerAction({
   return (
     <button
       type="button"
-      title="Send"
-      aria-label="Send"
+      title={label}
+      aria-label={label}
       disabled={!hasValue}
       onClick={onSend}
       className="composer-send grid size-6.5 place-items-center rounded-md bg-white text-black hover:bg-white/90 disabled:cursor-default disabled:bg-white/30 disabled:text-black/40 disabled:hover:bg-white/30"
