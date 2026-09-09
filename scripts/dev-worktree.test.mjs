@@ -8,6 +8,7 @@ import { createServer } from "node:net";
 import { test } from "node:test";
 import {
   worktreeIdentity,
+  normalizeGitPath,
   devConfig,
   assertPortAvailable,
   readBaseConfig,
@@ -92,4 +93,15 @@ test("an occupied port fails before Tauri can attach to another frontend", async
     await new Promise((resolve) => server.close(resolve));
   }
   await assertPortAvailable(port);
+});
+
+test("Windows Git paths ignore drive case and separator differences", () => {
+  assert.equal(
+    normalizeGitPath(String.raw`D:\a\Jayhun\.git`, "win32"),
+    normalizeGitPath("d:/a/jayhun/.git", "win32"),
+  );
+  assert.notEqual(
+    normalizeGitPath("/repo/Worktree", "linux"),
+    normalizeGitPath("/repo/worktree", "linux"),
+  );
 });

@@ -4,12 +4,19 @@ import { readFileSync, realpathSync } from "node:fs";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
 
+export function normalizeGitPath(path, platform = process.platform) {
+  // Git and Node can disagree about drive-letter case on Windows.
+  return platform === "win32" ? path.replaceAll("\\", "/").toLowerCase() : path;
+}
+
 export function worktreeIdentity(root) {
   const git = (...args) =>
     execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-  const gitDir = realpathSync(git("rev-parse", "--absolute-git-dir"));
-  const commonDir = realpathSync(
-    resolve(root, git("rev-parse", "--git-common-dir")),
+  const gitDir = normalizeGitPath(
+    realpathSync(git("rev-parse", "--absolute-git-dir")),
+  );
+  const commonDir = normalizeGitPath(
+    realpathSync(resolve(root, git("rev-parse", "--git-common-dir"))),
   );
   if (gitDir === commonDir) return null;
   const digest = createHash("sha256").update(gitDir).digest();
