@@ -30,6 +30,7 @@ import {
 } from "./session";
 
 export type WorkspaceSessionStub = {
+  followsDefault?: boolean;
   inboxAsk?: InboxAskContext;
   id: string;
   cwd: string;
@@ -217,6 +218,8 @@ function sessionStub(session: Session): WorkspaceSessionStub | null {
   if (!session.id) return null;
   return {
     id: session.id,
+    ...(session.followsDefault === true && !session.busy && session.blocks.length === 0 && !session.providerSessionId
+      ? { followsDefault: true } : {}),
     cwd: session.cwd || "~",
     harness: session.harness,
     model: session.model,
@@ -243,6 +246,7 @@ function sessionFromStub(stub: WorkspaceSessionStub): Session {
   return {
     ...session,
     id: stub.id,
+    ...(stub.followsDefault === true ? { followsDefault: true } : {}),
     title: stub.title,
     ...(stub.inboxAsk ? { inboxAsk: stub.inboxAsk } : {}),
     ...(stub.providerSessionId
@@ -272,6 +276,7 @@ function sanitizeStub(raw: unknown): WorkspaceSessionStub | null {
       : {};
   return {
     id: value.id,
+    ...(value.followsDefault === true ? { followsDefault: true } : {}),
     cwd:
       typeof value.cwd === "string" && value.cwd.trim() ? value.cwd.trim() : "~",
     harness,
