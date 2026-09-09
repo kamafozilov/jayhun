@@ -8,6 +8,9 @@ const transport = vi.hoisted(() => ({
   }>,
   prompt: undefined as
     ((sessionId: string, command: Record<string, unknown>) => void) | undefined,
+  fast: undefined as
+    ((sessionId: string, command: Record<string, unknown>) => void) | undefined,
+  state: {} as Record<string, unknown>,
   writeChild: vi.fn(),
   spawnChild: vi.fn(),
 }));
@@ -26,6 +29,7 @@ vi.mock("./child", () => ({
 
 import {
   cancelOmpTurn,
+  bindOmpSession,
   sendOmpTurn,
   steerOmpTurn,
   forgetOmpSession,
@@ -71,6 +75,8 @@ beforeEach(() => {
   transport.spawnChild.mockReset();
   transport.spawnChild.mockResolvedValue(undefined);
   transport.prompt = (id, command) => response(id, command);
+  transport.fast = undefined;
+  transport.state = { sessionId: "provider-session" };
   transport.writeChild.mockReset();
   transport.writeChild.mockImplementation(
     async (sessionId: string, line: string) => {
@@ -79,11 +85,19 @@ beforeEach(() => {
       if (command.type === "extension_ui_response") return;
       if (command.type === "prompt")
         return transport.prompt?.(sessionId, command);
+      if (command.type === "set_fast_mode") {
+        if (transport.fast) return transport.fast(sessionId, command);
+        transport.state.fastModeEnabled = command.enabled;
+        return response(sessionId, command, {
+          enabled: command.enabled,
+          active: false,
+        });
+      }
       response(
         sessionId,
         command,
         command.type === "get_state"
-          ? { sessionId: "provider-session" }
+          ? transport.state
           : command.type === "get_available_commands"
             ? { commands: [{ name: "workflow", source: "custom" }] }
             : {},
@@ -120,6 +134,267 @@ async function started(turnInput = input()) {
     .at(-1)!.command;
   return { turn, request, settled: () => settled };
 }
+
+function fastPreferences() {
+  return events.flatMap((event) =>
+    event.type === "session.configChanged" && event.modelSettings?.fast != null
+      ? [event.modelSettings.fast]
+      : [],
+  );
+}
+
+function rejectFast(
+  sessionId: string,
+  command: Record<string, unknown>,
+  error: string,
+) {
+  frame(sessionId, {
+    type: "response",
+    id: command.id,
+    command: command.type,
+    success: false,
+    error,
+  });
+}
+
+describe("OMP fast preference lifecycle", () => {
+  it("confirms On and Off before prompting, without treating inactive as disabled", async () => {
+    const observed: unknown[] = [];
+    transport.prompt = (id, command) => {
+      observed.push(transport.state.fastModeEnabled);
+      response(id, command, { agentInvoked: false });
+    };
+    await sendOmpTurn({ ...input(), modelSettings: { fast: "true" } });
+    await sendOmpTurn({ ...input(), modelSettings: { fast: "false" } });
+    expect(observed).toEqual([true, false]);
+    expect(fastPreferences()).toEqual(["true", "false"]);
+  });
+
+  it("blocks a failed disable, restores confirmed On, and accepts an explicit retry", async () => {
+    transport.state.fastModeEnabled = true;
+    transport.prompt = (id, command) =>
+      response(id, command, { agentInvoked: false });
+    transport.fast = (id, command) =>
+      rejectFast(id, command, "Cannot change preference");
+    const turnInput = { ...input(), modelSettings: { fast: "false" } };
+    await expect(sendOmpTurn(turnInput)).rejects.toThrow();
+    expect(transport.requests.some((r) => r.command.type === "prompt")).toBe(
+      false,
+    );
+    expect(fastPreferences()).toEqual(["true"]);
+    expect(events.some((event) => event.type === "session.error")).toBe(true);
+    transport.fast = undefined;
+    await sendOmpTurn(turnInput);
+    expect(fastPreferences()).toEqual(["true", "false"]);
+    expect(transport.state.fastModeEnabled).toBe(false);
+    expect(
+      transport.requests.filter((r) => r.command.type === "prompt"),
+    ).toHaveLength(1);
+  });
+
+  it("does not mistake a transport failure for unsupported enable or cache it as success", async () => {
+    transport.state.fastModeEnabled = false;
+    transport.fast = () => {
+      throw new Error("Broken pipe");
+    };
+    transport.prompt = (id, command) =>
+      response(id, command, { agentInvoked: false });
+    const turnInput = { ...input(), modelSettings: { fast: "true" } };
+    await expect(sendOmpTurn(turnInput)).rejects.toThrow();
+    expect(transport.requests.some((r) => r.command.type === "prompt")).toBe(
+      false,
+    );
+    expect(fastPreferences()).toEqual(["false"]);
+    expect(events.some((event) => event.type === "session.error")).toBe(true);
+    transport.fast = undefined;
+    await sendOmpTurn(turnInput);
+    expect(transport.state.fastModeEnabled).toBe(true);
+    expect(
+      transport.requests.filter((r) => r.command.type === "prompt"),
+    ).toHaveLength(1);
+  });
+
+  it("does not publish Off or prompt when disable has no usable confirmation", async () => {
+    transport.state.fastModeEnabled = true;
+    transport.fast = (id, command) => {
+      delete transport.state.fastModeEnabled;
+      response(id, command, {});
+    };
+    const turnInput = { ...input(), modelSettings: { fast: "false" } };
+    await expect(sendOmpTurn(turnInput)).rejects.toThrow();
+    expect(fastPreferences()).toEqual([]);
+    expect(transport.requests.some((r) => r.command.type === "prompt")).toBe(
+      false,
+    );
+    expect(events.some((event) => event.type === "session.error")).toBe(true);
+    transport.fast = undefined;
+    transport.prompt = (id, command) =>
+      response(id, command, { agentInvoked: false });
+    await sendOmpTurn(turnInput);
+    expect(fastPreferences()).toEqual(["false"]);
+    expect(transport.state.fastModeEnabled).toBe(false);
+  });
+
+  it("reconciles unsupported enable and retries on a supported model without blocking ordinary prompts", async () => {
+    transport.state.fastModeEnabled = false;
+    transport.fast = (id, command) =>
+      rejectFast(
+        id,
+        command,
+        "Fast mode is unavailable for the current model.",
+      );
+    transport.prompt = (id, command) =>
+      response(id, command, { agentInvoked: false });
+    await sendOmpTurn({
+      ...input(),
+      model: "omp:anthropic/unsupported",
+      modelSettings: { fast: "true" },
+    });
+    expect(fastPreferences()).toEqual(["false"]);
+    expect(events.some((event) => event.type === "session.error")).toBe(false);
+    expect(
+      transport.requests.filter((r) => r.command.type === "set_fast_mode"),
+    ).toHaveLength(1);
+    await sendOmpTurn({ ...input(), model: "omp:anthropic/unsupported" });
+    transport.fast = undefined;
+    await sendOmpTurn({
+      ...input(),
+      model: "omp:anthropic/supported",
+      modelSettings: { fast: "true" },
+    });
+    expect(transport.state.fastModeEnabled).toBe(true);
+    expect(fastPreferences().at(-1)).toBe("true");
+    expect(
+      transport.requests.filter((r) => r.command.type === "prompt"),
+    ).toHaveLength(3);
+  });
+
+  it("revalidates an enabled preference when the model changes", async () => {
+    transport.prompt = (id, command) =>
+      response(id, command, { agentInvoked: false });
+    await sendOmpTurn({
+      ...input(),
+      model: "omp:anthropic/first",
+      modelSettings: { fast: "true" },
+    });
+    transport.fast = (id, command) => {
+      transport.state.fastModeEnabled = false;
+      rejectFast(
+        id,
+        command,
+        "Fast mode is unavailable for the current model.",
+      );
+    };
+    await sendOmpTurn({
+      ...input(),
+      model: "omp:anthropic/second",
+      modelSettings: { fast: "true" },
+    });
+    expect(fastPreferences()).toEqual(["true", "false"]);
+    expect(
+      transport.requests.filter((r) => r.command.type === "set_fast_mode"),
+    ).toHaveLength(2);
+  });
+
+  it.each([
+    { requested: undefined, backend: true, expected: "true", controls: 0 },
+    { requested: "true", backend: false, expected: "true", controls: 1 },
+    { requested: "false", backend: true, expected: "false", controls: 1 },
+  ])(
+    "reconciles restored settings $requested against backend $backend",
+    async ({ requested, backend, expected, controls }) => {
+      bindOmpSession("omp-test", "saved-session", "/repo");
+      transport.state.fastModeEnabled = backend;
+      transport.state.fastModeActive = false;
+      const turnInput: SendTurnInput = {
+        ...input(),
+        modelSettings:
+          requested == null
+            ? { thinking: "high" }
+            : { thinking: "high", fast: requested },
+      };
+      const originalSettings = { ...turnInput.modelSettings };
+      transport.prompt = (id, command) =>
+        response(id, command, { agentInvoked: false });
+      await sendOmpTurn(turnInput);
+      expect(fastPreferences()).toEqual([expected]);
+      expect(turnInput.modelSettings).toEqual(originalSettings);
+      expect(
+        transport.requests.filter((r) => r.command.type === "set_fast_mode"),
+      ).toHaveLength(controls);
+      expect(transport.spawnChild).toHaveBeenCalledTimes(1);
+      expect(transport.spawnChild.mock.calls[0][2]).toContain("saved-session");
+    },
+  );
+
+  it("does not restart a restored conversation when its fast control fails", async () => {
+    bindOmpSession("omp-test", "saved-session", "/repo");
+    transport.state.fastModeEnabled = true;
+    transport.fast = (id, command) => rejectFast(id, command, "Cannot disable");
+    await expect(
+      sendOmpTurn({
+        ...input(),
+        modelSettings: { fast: "false" },
+      }),
+    ).rejects.toThrow();
+    expect(transport.spawnChild).toHaveBeenCalledTimes(1);
+    expect(transport.requests.some((r) => r.command.type === "prompt")).toBe(
+      false,
+    );
+    expect(fastPreferences()).toEqual(["true"]);
+  });
+
+  it("holds explicit intent through config events until RPC confirms it once", async () => {
+    transport.state.fastModeEnabled = false;
+    let pending: { id: string; command: Record<string, unknown> } | undefined;
+    transport.fast = (id, command) => {
+      pending = { id, command };
+      frame(id, {
+        type: "config_update",
+        fastModeEnabled: true,
+        fastModeActive: false,
+      });
+      frame(id, { type: "config_update", fastModeEnabled: false });
+    };
+    transport.prompt = (id, command) =>
+      response(id, command, { agentInvoked: false });
+    const turn = sendOmpTurn({ ...input(), modelSettings: { fast: "true" } });
+    await vi.waitFor(() => expect(pending).toBeDefined());
+    expect(fastPreferences()).toEqual([]);
+    expect(transport.requests.some((r) => r.command.type === "prompt")).toBe(
+      false,
+    );
+    response(pending!.id, pending!.command, { enabled: true, active: false });
+    await turn;
+    expect(fastPreferences()).toEqual(["true"]);
+    expect(
+      transport.requests.filter((r) => r.command.type === "set_fast_mode"),
+    ).toHaveLength(1);
+    frame("omp-test", { type: "config_update", fastModeEnabled: false });
+    expect(fastPreferences()).toEqual(["true", "false"]);
+  });
+
+  it("ignores OMP fast state and controls for Pi", async () => {
+    transport.state.fastModeEnabled = true;
+    const turn = sendPiTurn({
+      ...input("pi-test", "hello"),
+      model: "pi:default",
+      modelSettings: { fast: "false" },
+    });
+    await vi.waitFor(() =>
+      expect(transport.requests.some((r) => r.command.type === "prompt")).toBe(
+        true,
+      ),
+    );
+    frame("pi-test", { type: "config_update", fastModeEnabled: true });
+    frame("pi-test", { type: "agent_settled" });
+    await turn;
+    expect(fastPreferences()).toEqual([]);
+    expect(
+      transport.requests.some((r) => r.command.type === "set_fast_mode"),
+    ).toBe(false);
+  });
+});
 
 describe("OMP command lifecycle over the real RPC multiplexer", () => {
   it("reflects command-driven model/settings and session changes in Jayhun", async () => {

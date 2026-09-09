@@ -5233,7 +5233,7 @@ export default function App({
         onDeleteSession={onDeleteHistorySession}
         onDeleteSessions={onDeleteHistorySessions}
         onOpenFile={onOpenFile}
-        onOpenTerminal={(cwd) => onOpenTerminal(cwd)}
+        onOpenTerminal={onOpenTerminal}
         onFileMoved={onFileMoved}
         onFileDeleted={onFileDeleted}
         canGoBack={

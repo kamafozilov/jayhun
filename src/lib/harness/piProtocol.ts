@@ -310,7 +310,7 @@ export function extensionUiTitle(request: PiExtensionUiRequest): string {
   const text =
     request.method === "confirm"
       ? [request.title, request.message].filter(Boolean).join(" — ")
-      : request.title ?? "Pi extension";
+      : (request.title ?? "Pi extension");
   // Pi's theme helpers emit ANSI even in RPC mode (e.g. Ponytail setStatus).
   // These labels use native UI styling. Strip CSI and OSC sequences only at
   // the display boundary: select replies must retain the original option.
@@ -686,13 +686,16 @@ export function modelsFromRpcData(
     seen.add(nativeId);
     const name = stringField(model, "name") || modelId;
     const contextWindow = numberField(model, "contextWindow");
-    const settings = thinkingSetting(model.reasoning === true);
+    const settings = [
+      thinkingSetting(model.reasoning === true),
+      flavor.id === "omp" ? fastModeSetting() : undefined,
+    ].filter((setting): setting is ModelSetting => setting != null);
     models.push({
       id: `${flavor.id}:${nativeId}`,
       harness: flavor.id,
       name,
       nativeId,
-      ...(settings ? { settings: [settings] } : {}),
+      ...(settings.length ? { settings } : {}),
       ...(contextWindow && contextWindow > 0 ? { contextWindow } : {}),
     });
   }
@@ -710,6 +713,21 @@ export function thinkingSetting(reasoning: boolean): ModelSetting | undefined {
       value,
       label: thinkingLabel(value),
     })),
+  };
+}
+
+function fastModeSetting(): ModelSetting {
+  return {
+    id: "fast",
+    label: "Fast",
+    description:
+      "Prefer priority processing when supported by the current model",
+    kind: "toggle",
+    value: "false",
+    options: [
+      { value: "false", label: "Off" },
+      { value: "true", label: "On" },
+    ],
   };
 }
 

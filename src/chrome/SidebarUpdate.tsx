@@ -7,6 +7,7 @@ import {
   subscribeUpdater,
   restartToUpdate,
 } from "../lib/updater";
+import type { UpdaterSnapshot } from "../lib/updater";
 import type { InstalledUpdate } from "../lib/updateNotice";
 import { UpdateRailCard } from "./UpdateRailCard";
 
@@ -19,38 +20,39 @@ export function SidebarUpdateFooter({
   onOpenWhatsNew?: (version: string) => void;
   onDismissUpdate?: () => void;
 }) {
-  return (
-    <div className="flex flex-col gap-1.5 p-2 pb-1">
-      {update && onOpenWhatsNew && onDismissUpdate ? (
-        <UpdateRailCard
-          update={update}
-          onOpen={onOpenWhatsNew}
-          onDismiss={onDismissUpdate}
-        />
-      ) : null}
-      <SidebarUpdate />
-    </div>
-  );
-}
-
-export function SidebarUpdate() {
   const snapshot = useSyncExternalStore(subscribeUpdater, getUpdaterSnapshot);
-  useEffect(() => {
-    return startUpdater();
-  }, [startUpdater]);
+  useEffect(() => startUpdater(), [startUpdater]);
+  const card =
+    update && onOpenWhatsNew && onDismissUpdate ? (
+      <UpdateRailCard
+        update={update}
+        onOpen={onOpenWhatsNew}
+        onDismiss={onDismissUpdate}
+      />
+    ) : null;
   const { phase } = snapshot;
-  if (
-    ![
+  const actionable =
+    [
       "available",
       "downloading",
       "verifying",
       "ready",
       "installing",
       "error",
-    ].includes(phase) ||
-    (phase === "error" && !snapshot.availableVersion)
-  )
-    return null;
+    ].includes(phase) &&
+    (phase !== "error" || !!snapshot.availableVersion);
+  if (!card && !actionable) return null;
+
+  return (
+    <div className="flex flex-col gap-1.5 p-2 pb-0">
+      {card}
+      {actionable ? <SidebarUpdate snapshot={snapshot} /> : null}
+    </div>
+  );
+}
+
+function SidebarUpdate({ snapshot }: { snapshot: UpdaterSnapshot }) {
+  const { phase } = snapshot;
   const busy =
     phase === "downloading" || phase === "verifying" || phase === "installing";
   const label =

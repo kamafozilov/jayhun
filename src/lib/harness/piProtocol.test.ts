@@ -384,6 +384,34 @@ describe("tools and models", () => {
     expect(models[1]?.settings).toBeUndefined();
   });
 
+  it("exposes the fast preference only on OMP models", () => {
+    const data = {
+      models: [
+        { id: "reasoning", provider: "anthropic", reasoning: true },
+        { id: "plain", provider: "openai", reasoning: false },
+      ],
+    };
+    const omp = modelsFromRpcData(OMP_FLAVOR, data);
+    for (const model of omp) {
+      const fast = model.settings?.find((setting) => setting.id === "fast");
+      expect(fast?.kind).toBe("toggle");
+      expect(fast?.options.map((option) => option.value)).toEqual([
+        "false",
+        "true",
+      ]);
+    }
+    expect(
+      omp
+        .find((model) => model.nativeId === "anthropic/reasoning")
+        ?.settings?.some((setting) => setting.id === "thinking"),
+    ).toBe(true);
+    expect(
+      modelsFromRpcData(PI_FLAVOR, data).some((model) =>
+        model.settings?.some((setting) => setting.id === "fast"),
+      ),
+    ).toBe(false);
+  });
+
   it("reads session and context stats", () => {
     expect(
       providerSessionIdFromState({

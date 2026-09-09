@@ -83,6 +83,10 @@ type Live = {
   contextWindow?: number;
   nativeModel: string;
   thinking: string;
+  /** Confirmed preference, not whether priority processing is currently active. */
+  fastModeEnabled?: boolean;
+  fastModeModel?: string;
+  fastModeSyncing: boolean;
   planning: boolean;
   onEvent: (event: HarnessEvent) => void;
   approvals: Map<number, PendingApproval>;
@@ -248,7 +252,7 @@ export async function compactContext(
     live = await ensureLive(flavor, input);
   } else {
     live.onEvent = input.onEvent;
-    await applyModel(live, input);
+    if (flavor.id !== "omp") await applyModel(live, input);
   }
   if (state.cancelledThreads.delete(input.sessionId)) return;
 
@@ -258,6 +262,7 @@ export async function compactContext(
     .then(async () => {
       live.cancelled = false;
       live.muteUpdates = false;
+      if (flavor.id === "omp") await applyOmpSettings(live, input);
       const response = await live.rpc.request(
         { type: "compact" },
         COMPACT_TIMEOUT_MS,
@@ -402,7 +407,7 @@ async function ensureLive(
     existing.planning === wantPlanning
   ) {
     existing.onEvent = input.onEvent;
-    await applyModel(existing, input);
+    if (flavor.id !== "omp") await applyModel(existing, input);
     return existing;
   }
   if (existing) {
@@ -458,6 +463,7 @@ async function startLive(
     providerSessionId: resume ?? "",
     nativeModel: native,
     thinking: input.modelSettings?.thinking ?? "",
+    fastModeSyncing: flavor.id === "omp",
     planning: input.intent === "plan",
     onEvent: input.onEvent,
     approvals: new Map(),
@@ -527,7 +533,7 @@ async function startLive(
       INIT_TIMEOUT_MS,
     );
     bindState(flavor, input.sessionId, live, stateFrame.data);
-    await applyModel(live, input);
+    if (flavor.id !== "omp") await applyModel(live, input);
     if (live.providerSessionId) {
       live.onEvent({
         type: "session.providerBound",
@@ -547,7 +553,8 @@ async function runTurn(
   live: Live,
   input: SendTurnInput,
 ): Promise<void> {
-  await applyModel(live, input);
+  if (flavor.id === "omp") await applyOmpSettings(live, input);
+  else await applyModel(live, input);
   live.emittedAssistant = "";
   live.emittedReasoning = "";
   live.turnError = null;
@@ -658,14 +665,32 @@ function handleFrame(
       const provider = stringField(model, "provider");
       const modelId = stringField(model, "id");
       const thinking = stringField(rec, "thinkingLevel");
+      const fast =
+        typeof rec.fastModeEnabled === "boolean"
+          ? rec.fastModeEnabled
+          : undefined;
       const native =
         provider && modelId ? piNativeId(provider, modelId) : undefined;
-      if (native) live.nativeModel = native;
+      if (native && native !== live.nativeModel) {
+        live.nativeModel = native;
+        live.fastModeModel = undefined;
+      }
       if (isPiThinkingLevel(thinking)) live.thinking = thinking;
+      if (fast != null) live.fastModeEnabled = fast;
       live.onEvent({
         type: "session.configChanged",
         ...(native ? { model: `${flavor.id}:${native}` } : {}),
-        ...(isPiThinkingLevel(thinking) ? { modelSettings: { thinking } } : {}),
+        ...(isPiThinkingLevel(thinking) ||
+        (fast != null && !live.fastModeSyncing)
+          ? {
+              modelSettings: {
+                ...(isPiThinkingLevel(thinking) ? { thinking } : {}),
+                ...(fast != null && !live.fastModeSyncing
+                  ? { fast: String(fast) }
+                  : {}),
+              },
+            }
+          : {}),
       });
       return;
     }
@@ -988,6 +1013,74 @@ async function applyModel(
   }
 }
 
+async function applyOmpSettings(
+  live: Live,
+  input: HarnessSessionInput,
+): Promise<void> {
+  live.fastModeSyncing = true;
+  try {
+    const previousModel = live.nativeModel;
+    await applyModel(live, input);
+    if (live.nativeModel !== previousModel) live.fastModeModel = undefined;
+    const fast = input.modelSettings?.fast;
+    const enabled =
+      fast === "true" ? true : fast === "false" ? false : live.fastModeEnabled;
+    if (
+      enabled != null &&
+      (enabled !== live.fastModeEnabled ||
+        (enabled && live.fastModeModel !== live.nativeModel))
+    ) {
+      live.fastModeModel = undefined;
+      try {
+        const response = await live.rpc.request({
+          type: "set_fast_mode",
+          enabled,
+        });
+        const data = asRecord(response.data);
+        if (typeof data?.enabled !== "boolean") {
+          throw new Error("OMP did not confirm the fast mode preference");
+        }
+        live.fastModeEnabled = data.enabled;
+        if (data.enabled !== enabled) {
+          throw new Error(
+            "OMP did not apply the requested fast mode preference",
+          );
+        }
+        live.fastModeModel = live.nativeModel;
+      } catch (error) {
+        // Only the runtime's specific unsupported-model rejection is benign.
+        // Transport failures and failed disables must stop before prompting.
+        const unsupported =
+          enabled &&
+          error instanceof Error &&
+          error.message === "Fast mode is unavailable for the current model.";
+        const state = await live.rpc
+          .request({ type: "get_state" }, STATS_TIMEOUT_MS)
+          .catch(() => undefined);
+        const confirmed = asRecord(state?.data)?.fastModeEnabled;
+        live.fastModeEnabled =
+          typeof confirmed === "boolean" ? confirmed : undefined;
+        if (!unsupported || live.fastModeEnabled == null) throw error;
+        live.onEvent({ type: "status", text: error.message });
+      }
+    }
+  } catch (error) {
+    live.onEvent({
+      type: "session.error",
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  } finally {
+    live.fastModeSyncing = false;
+    if (live.fastModeEnabled != null) {
+      live.onEvent({
+        type: "session.configChanged",
+        modelSettings: { fast: String(live.fastModeEnabled) },
+      });
+    }
+  }
+}
+
 function bindState(
   flavor: PiFlavor,
   sessionId: string,
@@ -1009,6 +1102,11 @@ function bindState(
   const modelId = stringField(model, "id");
   if (provider && modelId && !live.nativeModel) {
     live.nativeModel = piNativeId(provider, modelId);
+  }
+  const fast = asRecord(data)?.fastModeEnabled;
+  if (flavor.id === "omp" && typeof fast === "boolean") {
+    live.fastModeModel = live.nativeModel;
+    live.fastModeEnabled = fast;
   }
 }
 
