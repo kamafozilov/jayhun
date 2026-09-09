@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+- Check for updates 15 seconds after startup and every four minutes in packaged builds.
+- Dismiss the installed update card after closing its release notes.
+- Widen the release notes dialog and size it to its content.
+
+### Fixed
+- Show signature verification separately from download progress before allowing an update restart.
+- Keep downloads with an unknown size from appearing complete.
+
 ## [0.1.42] - 2026-09-09
 
 ### Fixed

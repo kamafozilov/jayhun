@@ -553,6 +553,15 @@ header[data-tauri-drag-region] button {
   font-size: 18px;
 }
 
+.whats-new-md.agent-markdown {
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.whats-new-md.agent-markdown li + li {
+  margin-top: 0.65rem;
+}
+
 .whats-new-md.agent-markdown [data-streamdown="heading-3"] {
   margin-top: 1.15rem;
   margin-bottom: 0.35rem;

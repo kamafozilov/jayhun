@@ -4,16 +4,18 @@ import { createPortal } from "react-dom";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { LAYER } from "../lib/layers";
 
-export type ModalSize = "sm" | "md";
+export type ModalSize = "sm" | "md" | "lg";
 
 const WIDTH: Record<ModalSize, string> = {
   sm: "w-[min(420px,calc(100vw-24px))]",
   md: "w-[min(560px,calc(100vw-24px))]",
+  lg: "w-[min(760px,calc(100vw-24px))]",
 };
 
 const TOP: Record<ModalSize, string> = {
   sm: "top-[22%]",
   md: "top-[10%]",
+  lg: "top-[10%]",
 };
 
 type Props = {
@@ -67,7 +69,9 @@ export function ModalPanel({
         onMouseDown={(event) => event.stopPropagation()}
         className={`modal-panel flex flex-col overflow-hidden rounded-2xl border border-content/10 bg-background-base/55 shadow-2xl backdrop-blur-xl ${className ?? ""}`}
       >
-        <header className="flex shrink-0 items-start gap-2 px-4 pt-3">
+        <header
+          className={`flex shrink-0 items-start gap-2 ${size === "lg" ? "px-5 pt-5 sm:px-7 sm:pt-6" : "px-4 pt-3"}`}
+        >
           <div className="min-w-0 flex-1 pt-0.5">
             <h2
               id={titleId}
