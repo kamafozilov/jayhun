@@ -61,13 +61,13 @@ function ApprovalToastCard({
 
   return (
     <article
-      className="approval-toast pointer-events-auto overflow-hidden rounded-xl border border-content/20 border-dashed bg-content/10 shadow-xl backdrop-blur-xl"
+      className="pointer-events-auto overflow-hidden rounded-xl border border-content/20 border-dashed relative floating-surface shadow-xl"
       role="status"
     >
       <button
         type="button"
         onClick={openSession}
-        className="flex w-full flex-col gap-2 px-3.5 py-3 text-left hover:bg-content/5"
+        className="approval-toast flex w-full flex-col gap-2 px-3.5 py-3 text-left hover:bg-content/5"
       >
         <span className="flex items-center gap-2">
           <HarnessIcon harness={session.harness} className="size-4 shrink-0" />

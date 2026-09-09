@@ -131,6 +131,14 @@ type InboxListCache = InboxListResult & {
   fetchedAt: number;
 };
 
+type InboxListListener = (key: string, result: InboxListResult) => void;
+const inboxListListeners = new Set<InboxListListener>();
+
+export function subscribeInboxList(listener: InboxListListener): () => void {
+  inboxListListeners.add(listener);
+  return () => { inboxListListeners.delete(listener); };
+}
+
 let inboxListCache: InboxListCache | null = null;
 const inboxListInflight = new Map<string, Promise<InboxListResult>>();
 const repoByPath = new Map<string, string>();
@@ -436,6 +444,7 @@ export async function listInboxItems(
   const promise = fetchInboxItems(projects, query)
     .then((result) => {
       inboxListCache = { key, ...result, fetchedAt: Date.now() };
+      for (const listener of inboxListListeners) listener(key, result);
       return result;
     })
     .finally(() => {

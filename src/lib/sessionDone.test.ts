@@ -57,3 +57,14 @@ describe("nextUnseenFinishedSessions", () => {
     ).toEqual(new Set(["b"]));
   });
 });
+
+it("does not label cancelled or failed turns as finished unread", () => {
+  expect(
+    nextUnseenFinishedSessions({
+      previousBusyIds: new Set(["cancelled", "failed", "success"]),
+      busyIds: new Set(),
+      previousUnseenIds: new Set(),
+      completedIds: new Set(["success"]),
+    }),
+  ).toEqual(new Set(["success"]));
+});

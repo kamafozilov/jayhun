@@ -3,6 +3,7 @@ import { type ReactNode } from "react";
 import type { InboxKind } from "../lib/githubTasks";
 import {
   DEFAULT_INBOX_FILTERS,
+  ALL_INBOX_STATUS_FILTER,
   hasActiveInboxFilters,
   type InboxFilters,
   type InboxSource,
@@ -142,6 +143,12 @@ export function InboxFiltersMenu({
 
       <SectionLabel>Status</SectionLabel>
       <FilterItem
+        label="All statuses"
+        checked={!filters.status.open && !filters.status.closed &&
+          (source === "linear" || (!filters.status.draft && !filters.status.merged))}
+        onClick={() => onChange({ ...filters, status: ALL_INBOX_STATUS_FILTER })}
+      />
+      <FilterItem
         label="Open"
         checked={filters.status.open}
         onClick={() => toggleStatus("open")}
@@ -250,7 +257,7 @@ export function InboxFiltersMenu({
             role="menuitem"
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => {
-              onChange(DEFAULT_INBOX_FILTERS);
+              onChange({ ...DEFAULT_INBOX_FILTERS, status: ALL_INBOX_STATUS_FILTER });
               if (teamsActive) onLinearTeamsChange([]);
             }}
             className="flex h-7 w-full items-center rounded-lg px-2 text-left text-[13px] leading-none text-content/70 hover:bg-content/5 hover:text-content"

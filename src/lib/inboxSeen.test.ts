@@ -47,6 +47,23 @@ describe("inbox seen items", () => {
     localStorage.removeItem(KEY);
   });
 
+  it("does not roll back a read when an older initial fetch arrives", () => {
+    markInboxItemSeen(entry("github:acme/web:pr:4", "2026-08-27T11:00:00Z"));
+    seedInboxSeenIfNeeded([
+      entry("github:acme/web:pr:4", "2026-08-27T10:00:00Z"),
+    ]);
+    expect(
+      isInboxEntryUnseen(entry("github:acme/web:pr:4", "2026-08-27T11:00:00Z")),
+    ).toBe(false);
+  });
+
+  it("remembers an empty first snapshot so the first arrival is unread", () => {
+    seedInboxSeenIfNeeded([]);
+    expect(
+      isInboxEntryUnseen(entry("github:acme/web:pr:4", "2026-08-27T11:00:00Z")),
+    ).toBe(true);
+  });
+
   it("seeds current items so a long-standing inbox does not badge", () => {
     seedInboxSeenIfNeeded([
       entry("linear:ENG-1", "2026-08-27T10:00:00Z"),

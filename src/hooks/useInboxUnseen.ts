@@ -14,6 +14,7 @@ import {
 } from "../lib/inboxFilters";
 import {
   inboxHasUnseenItems,
+  isInboxEntryUnseen,
   seedInboxSeenIfNeeded,
   subscribeInboxSeen,
   type InboxSeenEntry,
@@ -36,7 +37,6 @@ export function useInboxUnseen(recents: RecentProject[], cwd: string): boolean {
   const entriesRef = useRef<InboxSeenEntry[]>([]);
 
   const applyUnseen = useCallback((next: boolean) => {
-    noteInboxUnseen(next);
     setUnseen(next);
   }, []);
 
@@ -55,8 +55,11 @@ export function useInboxUnseen(recents: RecentProject[], cwd: string): boolean {
     }
 
     let cancelled = false;
+    let pulling = false;
 
     const pull = (force: boolean) => {
+      if (pulling) return;
+      pulling = true;
       const projectPaths = projects.map((project) => project.path);
       const filters = pruneInboxFilters(loadInboxFilters(), projectPaths);
       const query: InboxQuery = {
@@ -67,21 +70,29 @@ export function useInboxUnseen(recents: RecentProject[], cwd: string): boolean {
       };
       void listInboxItems(projects, query, { force })
         .then((listed) => {
-          if (cancelled) return;
+          if (cancelled || Object.keys(listed.errors).length > 0) return;
           const visible = applyInboxFilters(listed.items, filters, "");
           const entries = seenEntries(visible);
           entriesRef.current = entries;
-          seedInboxSeenIfNeeded(entries);
+          seedInboxSeenIfNeeded(seenEntries(listed.items));
+          noteInboxUnseen(
+            seenEntries(listed.items),
+            new Set(
+              entries.filter(isInboxEntryUnseen).map((entry) => entry.key),
+            ),
+          );
           applyUnseen(inboxHasUnseenItems(entries));
         })
         .catch(() => {
           // Leave the last known badge; a later poll can try again.
+        })
+        .finally(() => {
+          pulling = false;
         });
     };
 
     pull(false);
     const timer = window.setInterval(() => {
-      if (document.hidden) return;
       pull(true);
     }, POLL_MS);
     const onVis = () => {

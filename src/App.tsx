@@ -273,15 +273,20 @@ import {
 import { syncDockBadge } from "./lib/dockBadge";
 import { liveAgentsFromSessions } from "./lib/liveAgents";
 import { hiddenApprovalNotices } from "./lib/approvalToast";
-import { nextUnseenFinishedSessions } from "./lib/sessionDone";
+import {
+  nextUnseenFinishedSessions,
+  loadUnseenFinishedSessions,
+  saveUnseenFinishedSessions,
+} from "./lib/sessionDone";
 import {
   loadNotificationsEnabled,
   NOTIFICATION_CLICK_EVENT,
   notifySession,
+  announceSessionFinished,
   probeNotificationPermission,
   setWindowFocused,
+  useWindowFocused,
 } from "./lib/notifications";
-import { playCue } from "./lib/sounds";
 import { archiveFocusedSession } from "./lib/archiveShortcut";
 import {
   adjacentItemId,
@@ -962,7 +967,18 @@ export default function App({
   }
   const approvalSessionIds = approvalSessionIdsRef.current;
 
-  const activeSessionId = inboxViewOpen ? inboxAskPortal?.sessionId : active?.id;
+  const windowFocused = useWindowFocused();
+  const activeSessionId =
+    searchViewOpen || settingsOpen || notesViewOpen
+      ? undefined
+      : inboxViewOpen
+        ? inboxAskPortal?.sessionId
+        : !projectTerminalFocused &&
+            !activeTab?.diffFocused &&
+            activeTab?.focusedId === active?.id
+          ? active?.id
+          : undefined;
+  const readSessionId = windowFocused ? activeSessionId : undefined;
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
 
@@ -987,23 +1003,32 @@ export default function App({
   useEffect(() => {
     if (loadNotificationsEnabled()) void probeNotificationPermission();
   }, []);
-  const busyForDoneRef = useRef(busySessionIds);
-  const focusedForDoneRef = useRef(activeSessionId);
-  const unseenFinishedRef = useRef<Set<string>>(new Set());
+  const successfulFinishedIdsRef = useRef(new Set<string>());
+  const busyForDoneRef = useRef(new Set<string>());
+  const focusedForDoneRef = useRef<string | undefined>(undefined);
+  const [initialUnseenFinished] = useState(loadUnseenFinishedSessions);
+  const unseenFinishedRef = useRef(initialUnseenFinished);
+  const savedUnseenFinishedRef = useRef(initialUnseenFinished);
   if (
     busyForDoneRef.current !== busySessionIds ||
-    focusedForDoneRef.current !== activeSessionId
+    focusedForDoneRef.current !== readSessionId
   ) {
+    for (const id of busySessionIds) successfulFinishedIdsRef.current.delete(id);
     unseenFinishedRef.current = nextUnseenFinishedSessions({
       previousBusyIds: busyForDoneRef.current,
       busyIds: busySessionIds,
       previousUnseenIds: unseenFinishedRef.current,
-      focusedSessionId: activeSessionId,
+      focusedSessionId: readSessionId,
+      completedIds: successfulFinishedIdsRef.current,
     });
     busyForDoneRef.current = busySessionIds;
-    focusedForDoneRef.current = activeSessionId;
+    focusedForDoneRef.current = readSessionId;
   }
   const unseenFinishedIds = unseenFinishedRef.current;
+  useEffect(() => {
+    saveUnseenFinishedSessions(savedUnseenFinishedRef.current, unseenFinishedIds);
+    savedUnseenFinishedRef.current = unseenFinishedIds;
+  }, [unseenFinishedIds]);
 
   const liveAgents = useMemo(
     () =>
@@ -1024,18 +1049,31 @@ export default function App({
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    void getCurrentWindow()
+    let disposed = false;
+    const currentWindow = getCurrentWindow();
+    let focusChanged = false;
+    void currentWindow.isFocused()
+      .then((focused) => {
+        if (!disposed && !focusChanged) setWindowFocused(focused);
+      })
+      .catch(() => {});
+    void currentWindow
       .onFocusChanged(({ payload: focused }) => {
+        focusChanged = true;
+        if (disposed) return;
         setWindowFocused(focused);
         if (focused) {
+          if (loadNotificationsEnabled()) void probeNotificationPermission();
           flushHarnessEvents();
           syncDockBadge(sessionsRef.current);
         }
       })
       .then((fn) => {
-        unlisten = fn;
+        if (disposed) fn();
+        else unlisten = fn;
       });
     return () => {
+      disposed = true;
       unlisten?.();
     };
   }, [flushHarnessEvents]);
@@ -3927,6 +3965,7 @@ export default function App({
         } catch (error: unknown) {
           if (turnGen.current.get(sessionId) !== gen) return;
           if (wrap) revealHandoff(wrap.text);
+          providerFailureSeen = true;
           const message =
             error instanceof Error
               ? error.message
@@ -3939,6 +3978,15 @@ export default function App({
           if (turnGen.current.get(sessionId) !== gen) return;
           flushHarnessEvents();
           await flushSessionCheckpoint(sessionId);
+          if (turnGen.current.get(sessionId) !== gen) return;
+          const completed = sessionsRef.current.find((s) => s.id === sessionId);
+          if (
+            buildSucceeded && !providerFailureSeen && completed &&
+            !completed.inboxAsk && !sessionNeedsInput(completed) &&
+            !isProviderFailureText(lastAssistantTextInTurn(completed))
+          ) {
+            successfulFinishedIdsRef.current.add(sessionId);
+          }
           setSessions((prev) =>
             prev.map((s) => {
               if (s.id !== sessionId) return s;
@@ -3963,13 +4011,15 @@ export default function App({
           // quotes the reply's final text rather than the previous batch.
           window.setTimeout(() => {
             const finished = sessionsRef.current.find((s) => s.id === sessionId);
-            const visible = sessionId === activeSessionIdRef.current;
-            const sent = finished
-              ? notifySession(finished, "finished", visible)
-              : Promise.resolve(false);
-            void sent.then((ok) => {
-              if (!ok) playCue("turnFinished");
-            });
+            void announceSessionFinished(
+              finished,
+              sessionId === activeSessionIdRef.current,
+              buildSucceeded &&
+                !providerFailureSeen &&
+                !!finished &&
+                !isProviderFailureText(lastAssistantTextInTurn(finished)),
+              () => turnGen.current.get(sessionId) === gen,
+            );
           }, 0);
           notifyReviewChanged(sessionId);
           notifyGitChanged();

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyInboxFilters,
   DEFAULT_INBOX_FILTERS,
+  ALL_INBOX_STATUS_FILTER,
   filterInboxByKind,
   filterInboxByLinearProject,
   filterInboxByProject,
@@ -221,7 +222,7 @@ describe("filterInboxByStatus", () => {
 
   it("keeps every item when no status is selected", () => {
     expect(
-      filterInboxByStatus(rows, DEFAULT_INBOX_FILTERS.status).map(
+      filterInboxByStatus(rows, ALL_INBOX_STATUS_FILTER).map(
         (row) => row.number,
       ),
     ).toEqual([1, 2, 3, 4]);
@@ -338,8 +339,9 @@ describe("applyInboxFilters", () => {
 });
 
 describe("hasActiveInboxFilters", () => {
-  it("is false for defaults", () => {
-    expect(hasActiveInboxFilters(DEFAULT_INBOX_FILTERS)).toBe(false);
+  const unfiltered = { ...DEFAULT_INBOX_FILTERS, status: ALL_INBOX_STATUS_FILTER };
+  it("marks the default open and draft restriction as active", () => {
+    expect(hasActiveInboxFilters(DEFAULT_INBOX_FILTERS)).toBe(true);
   });
 
   it("is true when a project is hidden", () => {
@@ -355,7 +357,7 @@ describe("hasActiveInboxFilters", () => {
     expect(
       hasActiveInboxFilters(
         {
-          ...DEFAULT_INBOX_FILTERS,
+          ...unfiltered,
           hiddenProjects: ["/tmp/web"],
           hiddenKinds: ["pr"],
         },
@@ -367,7 +369,7 @@ describe("hasActiveInboxFilters", () => {
   it("is true when a Linear project is hidden on the Linear tab", () => {
     expect(
       hasActiveInboxFilters(
-        { ...DEFAULT_INBOX_FILTERS, hiddenLinearProjects: ["p1"] },
+        { ...unfiltered, hiddenLinearProjects: ["p1"] },
         "linear",
       ),
     ).toBe(true);
@@ -376,7 +378,7 @@ describe("hasActiveInboxFilters", () => {
   it("ignores hidden Linear projects on the GitHub tab", () => {
     expect(
       hasActiveInboxFilters(
-        { ...DEFAULT_INBOX_FILTERS, hiddenLinearProjects: ["p1"] },
+        { ...unfiltered, hiddenLinearProjects: ["p1"] },
         "github",
       ),
     ).toBe(false);
@@ -389,21 +391,22 @@ describe("hasActiveInboxFilters", () => {
   });
 
   it("ignores hidden Linear teams on the GitHub tab", () => {
-    expect(hasActiveInboxFilters(DEFAULT_INBOX_FILTERS, "github", ["t1"])).toBe(
+    expect(hasActiveInboxFilters(unfiltered, "github", ["t1"])).toBe(
       false,
     );
   });
 
   it("is false on the Linear tab when no team is hidden", () => {
-    expect(hasActiveInboxFilters(DEFAULT_INBOX_FILTERS, "linear", [])).toBe(
+    expect(hasActiveInboxFilters(unfiltered, "linear", [])).toBe(
       false,
     );
   });
 });
 
 describe("inboxFetchState", () => {
-  it("fetches everything while no status is selected", () => {
-    expect(inboxFetchState(DEFAULT_INBOX_FILTERS)).toBe("all");
+  it("fetches open and draft items by default and supports all statuses", () => {
+    expect(inboxFetchState(DEFAULT_INBOX_FILTERS)).toBe("open");
+    expect(inboxFetchState({ ...DEFAULT_INBOX_FILTERS, status: ALL_INBOX_STATUS_FILTER })).toBe("all");
   });
 
   it("narrows to open once only open or draft is selected", () => {

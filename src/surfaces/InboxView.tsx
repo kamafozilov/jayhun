@@ -1,3 +1,4 @@
+import { useInboxItemSeen } from "../hooks/useInboxItemSeen";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   CheckCheck,
@@ -47,6 +48,8 @@ import {
   inboxItemRef,
   inboxItemStatus,
   inboxListIsFresh,
+  inboxListCacheKey,
+  subscribeInboxList,
   inboxProjectsForRail,
   listInboxItems,
   peekGithubPrDiff,
@@ -353,6 +356,15 @@ export function InboxView({
     [activeFilters.assignedToMe, fetchState, linearHiddenTeamIds],
   );
 
+  useEffect(() => {
+    const key = inboxListCacheKey(projects, fetchQuery);
+    return subscribeInboxList((updatedKey, result) => {
+      if (updatedKey !== key || Object.keys(result.errors).length > 0) return;
+      setItems(result.items);
+      setProviderErrors(result.errors);
+    });
+  }, [projects, fetchQuery]);
+
   const resize = useDragResize({
     min: MIN_WIDTH,
     max: () => Math.min(MAX_WIDTH, Math.round(window.innerWidth * 0.5)),
@@ -485,6 +497,12 @@ export function InboxView({
     const key = inboxItemKey(selected);
     if (key !== selectedKey) setSelectedKey(key);
   }, [selected, selectedKey]);
+
+  useInboxItemSeen(
+    selected
+      ? { key: inboxItemKey(selected), updatedAt: selected.updatedAt }
+      : undefined,
+  );
 
   const onFiltersChange = (next: InboxFilters) => {
     const pruned = pruneInboxFilters(
@@ -1513,33 +1531,35 @@ function InboxProjectPicker({
         <div
           ref={menu}
           role="listbox"
-          className="absolute left-0 top-full z-30 mt-1 max-h-64 min-w-full max-w-64 overflow-y-auto rounded-lg border border-content/10 bg-content/10 p-1 shadow-xl backdrop-blur-xl outline-none"
+          className="absolute left-0 top-full z-30 mt-1 min-w-full max-w-64 overflow-hidden rounded-lg border border-content/10 floating-surface shadow-xl outline-none"
         >
-          {projects.map((project) => {
-            const active = selected
-              ? sameProjectPath(project.path, selected.path)
-              : false;
-            return (
-              <button
-                key={project.path}
-                type="button"
-                role="option"
-                aria-selected={active}
-                onClick={() => {
-                  onChange(project.path);
-                  setOpen(false);
-                }}
-                className={`flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-left text-[12px] ${
-                  active
-                    ? "bg-content/10 text-content"
-                    : "text-content/80 hover:bg-content/5 hover:text-content"
-                }`}
-              >
-                <InboxProjectMark project={project} />
-                <span className="min-w-0 truncate">{project.name}</span>
-              </button>
-            );
-          })}
+          <div className="max-h-64 overflow-y-auto p-1">
+            {projects.map((project) => {
+              const active = selected
+                ? sameProjectPath(project.path, selected.path)
+                : false;
+              return (
+                <button
+                  key={project.path}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  onClick={() => {
+                    onChange(project.path);
+                    setOpen(false);
+                  }}
+                  className={`flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-left text-[12px] ${
+                    active
+                      ? "bg-content/10 text-content"
+                      : "text-content/80 hover:bg-content/5 hover:text-content"
+                  }`}
+                >
+                  <InboxProjectMark project={project} />
+                  <span className="min-w-0 truncate">{project.name}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : null}
     </div>

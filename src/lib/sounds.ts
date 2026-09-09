@@ -1,3 +1,4 @@
+import { inboxUpdatedAt, type InboxSeenEntry } from "./inboxSeen";
 import { play, setEnabled, setVolume, type SoundName } from "cuelume";
 
 const KEY = "jayhun.sounds";
@@ -10,11 +11,7 @@ export const SOUNDS_VOLUME = 0.55;
 export const SOUNDS_CHANGE_EVENT = "jayhun:sounds-change";
 
 export type SoundCue =
-  | "turnFinished"
-  | "inboxUnseen"
-  | "updateAvailable"
-  | "switch"
-  | "copy";
+  "turnFinished" | "inboxUnseen" | "updateAvailable" | "switch" | "copy";
 
 const CUES: Record<SoundCue, SoundName> = {
   turnFinished: "success",
@@ -63,17 +60,24 @@ export function playCue(cue: SoundCue) {
   play(CUES[cue]);
 }
 
-let inboxDotOn = false;
 let inboxPrimed = false;
+const inboxObserved = new Map<string, number>();
 let announcedUpdate: string | undefined;
 
-/**
- * Rising edge of the project-rail inbox dot, after the first snapshot.
- * Launching with items already unseen must not chime.
- */
-export function noteInboxUnseen(isUnseen: boolean) {
-  if (isUnseen && !inboxDotOn && inboxPrimed) playCue("inboxUnseen");
-  inboxDotOn = isUnseen;
+/** Observe successful snapshots, not badge changes or read actions. */
+export function noteInboxUnseen(
+  entries: readonly InboxSeenEntry[],
+  eligibleKeys = new Set(entries.map((entry) => entry.key)),
+) {
+  let arrived = false;
+  for (const entry of entries) {
+    const version = inboxUpdatedAt(entry);
+    const previous = inboxObserved.get(entry.key);
+    if ((previous == null || version > previous) && eligibleKeys.has(entry.key))
+      arrived = true;
+    inboxObserved.set(entry.key, Math.max(previous ?? 0, version));
+  }
+  if (inboxPrimed && arrived) playCue("inboxUnseen");
   inboxPrimed = true;
 }
 
@@ -90,7 +94,7 @@ export function announceUpdateAvailable(version: string | null) {
 
 /** Test helper: forget which inbox/update cues already fired. */
 export function resetSoundCues() {
-  inboxDotOn = false;
+  inboxObserved.clear();
   inboxPrimed = false;
   announcedUpdate = undefined;
 }

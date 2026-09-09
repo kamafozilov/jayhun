@@ -41,9 +41,16 @@ export type LinearProjectOption = {
   name: string;
 };
 
-export const DEFAULT_INBOX_STATUS_FILTER: InboxStatusFilter = {
+export const ALL_INBOX_STATUS_FILTER: InboxStatusFilter = {
   open: false,
   draft: false,
+  closed: false,
+  merged: false,
+};
+
+export const DEFAULT_INBOX_STATUS_FILTER: InboxStatusFilter = {
+  open: true,
+  draft: true,
   closed: false,
   merged: false,
 };
@@ -100,7 +107,7 @@ export function loadInboxFilters(): InboxFilters {
         ? parsed.hiddenKinds.filter(isGithubInboxKind)
         : [],
       time: isTimeFilter(parsed.time) ? parsed.time : "all",
-      status: {
+      status: parsed.status == null ? DEFAULT_INBOX_STATUS_FILTER : {
         open: parsed.status?.open === true,
         draft: parsed.status?.draft === true,
         closed: parsed.status?.closed === true,

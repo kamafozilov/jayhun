@@ -98,20 +98,25 @@ describe("sounds", () => {
   });
 
   it("does not ding for the first inbox snapshot", () => {
-    noteInboxUnseen(true);
+    noteInboxUnseen([{ key: "a", updatedAt: "2026-09-09T10:00:00Z" }]);
     expect(play).not.toHaveBeenCalled();
   });
 
-  it("dings once when the inbox dot appears, then again after it clears", () => {
-    noteInboxUnseen(false);
-    noteInboxUnseen(true);
-    expect(play).toHaveBeenCalledTimes(1);
-    expect(play).toHaveBeenCalledWith("bloom");
-    noteInboxUnseen(true);
-    expect(play).toHaveBeenCalledTimes(1);
-    noteInboxUnseen(false);
-    noteInboxUnseen(true);
+  it("announces each arrival even while older items remain unread", () => {
+    const a = { key: "a", updatedAt: "2026-09-09T10:00:00Z" };
+    const b = { key: "b", updatedAt: "2026-09-09T10:00:00Z" };
+    noteInboxUnseen([]);
+    noteInboxUnseen([a]);
+    noteInboxUnseen([a, b]);
     expect(play).toHaveBeenCalledTimes(2);
+    noteInboxUnseen([a, b]);
+    noteInboxUnseen([]);
+    noteInboxUnseen([a, b]);
+    expect(play).toHaveBeenCalledTimes(2);
+    noteInboxUnseen([{ ...a, updatedAt: "2026-09-09T11:00:00Z" }, b]);
+    expect(play).toHaveBeenCalledTimes(3);
+    noteInboxUnseen([a, b]);
+    expect(play).toHaveBeenCalledTimes(3);
   });
 
   it("dings once per update version", () => {
