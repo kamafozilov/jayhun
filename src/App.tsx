@@ -257,7 +257,6 @@ import {
   listSessionsByProject,
   persistFingerprint,
   replaceInFlightSessions,
-  saveWorkspaceSnapshot,
   setSessionArchived,
   setSessionPinned,
   shouldPersistSession,
@@ -356,10 +355,7 @@ import {
   inFlightSnapshotKey,
   shouldWriteInFlightSnapshot,
 } from "./lib/inFlight";
-import {
-  collectWorkspaceSnapshot,
-  workspaceSnapshotKey,
-} from "./lib/workspaceSnapshot";
+import { useWorkspacePersistence } from "./hooks/useWorkspacePersistence";
 import type { InstalledUpdate } from "./lib/updateNotice";
 import {
   bindResumedSessions,
@@ -704,7 +700,6 @@ export default function App({
   const lastPersistedUserBlock = useRef(new Map<string, string>());
   const inFlightSyncKey = useRef<string | null>(null);
   const sawInFlight = useRef(false);
-  const workspaceSyncKey = useRef<string | null>(null);
   const observedSessions = useRef(new Map<string, Session>());
   const pendingPersist = useRef(new Map<string, Session>());
   const removingSessionIds = useRef(new Set<string>());
@@ -1231,30 +1226,14 @@ export default function App({
     void replaceInFlightSessions(refs).catch(() => undefined);
   }, [sessions, tabs]);
 
-  useEffect(() => {
-    if (windowTransfer) return;
-    const snapshot = collectWorkspaceSnapshot(
-      tabs,
-      sessions,
-      activeTabId,
-      projectCwd,
-      projectTerminals,
-    );
-    const key = workspaceSnapshotKey(snapshot);
-    if (workspaceSyncKey.current === key) return;
-    workspaceSyncKey.current = key;
-    const timer = window.setTimeout(() => {
-      void saveWorkspaceSnapshot(snapshot).catch(() => undefined);
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [
+  useWorkspacePersistence(
     tabs,
     sessions,
     activeTabId,
     projectCwd,
     projectTerminals,
-    windowTransfer,
-  ]);
+    !!windowTransfer,
+  );
 
   useEffect(() => {
     if (lastProjectPath()) return;
