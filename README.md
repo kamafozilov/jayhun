@@ -7,6 +7,11 @@ It runs installed agent CLIs, including Claude Code, Codex, Cursor, Grok Build,
 OpenCode, Pi, omp, and fx. Install and sign in to at least one provider before
 starting a chat. Provider subscriptions and authentication stay with those CLIs.
 
+OMP chats include an instruction to keep replies and progress updates in the user's
+language and script, unless another language is explicitly requested. This also
+applies to resumed chats; code, commands, and literal UI labels stay unchanged.
+It guides model behavior rather than translating or filtering generated text.
+
 ## Local development
 
 Use Node.js 24, pnpm 11.22.0, and Rust stable. The pnpm version is pinned in

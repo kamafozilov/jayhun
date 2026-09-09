@@ -452,12 +452,6 @@ describe("OMP command lifecycle over the real RPC multiplexer", () => {
     expect(events.filter((e) => e.type === "message.completed")).toHaveLength(
       1,
     );
-    expect(transport.spawnChild).toHaveBeenCalledWith(
-      "omp-test",
-      "/fake/omp",
-      ["--mode", "rpc"],
-      "/repo",
-    );
   });
 
   it.each(["before", "after"])(

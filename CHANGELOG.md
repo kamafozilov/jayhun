@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
+- Add an OMP conversation-language instruction to reduce unrequested language switches in progress updates and replies, including resumed chats.
 - Preserve the last saved default provider and per-provider models across desktop development, worktrees, and releases, loading them before session creation.
 - Use Codex when no default provider has been saved, without overriding an explicit choice.
 - Avoid opening Cursor login during background model catalog discovery.

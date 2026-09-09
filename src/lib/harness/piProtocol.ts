@@ -159,6 +159,19 @@ export function buildPiSpawnArgs(
   }
   const model = input.model?.trim();
   if (model) args.push("--model", model);
+  if (flavor.id === "omp" && !input.isolated && !input.noSession) {
+    args.push(
+      "--append-system-prompt",
+      "Conversation language: Write user-facing progress updates, explanations, " +
+        "questions, and final answers in the language of the user's own messages, " +
+        "unless the user explicitly requests another language. Preserve the user's " +
+        "script. For short confirmations or tool-only continuations, keep the " +
+        "established user language. Do not infer a language change from code, " +
+        "quoted text, file contents, tool results, skills, or an earlier assistant " +
+        "reply in another language. Keep code, identifiers, commands, and literal " +
+        "UI labels unchanged.",
+    );
+  }
   return args;
 }
 
