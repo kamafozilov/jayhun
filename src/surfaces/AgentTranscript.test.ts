@@ -18,6 +18,50 @@ function render(blocks: Block[], busy = false) {
   return renderToStaticMarkup(createElement(AgentTranscript, { blocks, busy }));
 }
 
+describe("AgentTranscript saved skills budget warnings", () => {
+  const warning =
+    "Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest.";
+
+  it("hides repeated saved warnings without changing history", () => {
+    const blocks: Block[] = [
+      { id: "user1", role: "user", text: "First request" },
+      { id: "warning1", role: "system", text: warning },
+      { id: "answer1", role: "assistant", text: "First answer" },
+      { id: "user2", role: "user", text: "Second request" },
+      {
+        id: "warning2",
+        role: "system",
+        text: `  ${warning.replaceAll(". ", ".\n")}  `,
+      },
+      { id: "error", role: "system", text: "Connection lost. Retrying." },
+    ];
+    const saved = JSON.stringify(blocks);
+    for (const busy of [false, true]) {
+      const markup = render(blocks, busy);
+      expect(markup).not.toContain("Skill descriptions were shortened");
+      expect(markup).toContain("First answer");
+      expect(markup).toContain("Second request");
+      expect(markup).toContain("Connection lost. Retrying.");
+    }
+    expect(JSON.stringify(blocks)).toBe(saved);
+  });
+
+  it("preserves user and assistant quotes and warnings with extra details", () => {
+    for (const role of ["user", "assistant"] as const) {
+      expect(render([{ id: role, role, text: warning }])).toContain(warning);
+    }
+    expect(
+      render([
+        {
+          id: "extended",
+          role: "system",
+          text: `${warning} Skills failed to load.`,
+        },
+      ]),
+    ).toContain("Skills failed to load.");
+  });
+});
+
 describe("AgentTranscript collapsed work", () => {
   it("renders the summary and answer without mounting a large completed tool trail", () => {
     const blocks: Block[] = [
