@@ -4,6 +4,8 @@ import tailwindcss from "@tailwindcss/vite";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+// @ts-expect-error process is a nodejs global
+const port = Number(process.env.JAYHUN_DEV_PORT ?? 1420);
 
 export default defineConfig(async ({ mode }) => {
   const stable = mode === "stable";
@@ -12,7 +14,7 @@ export default defineConfig(async ({ mode }) => {
     plugins: [react(), tailwindcss()],
     clearScreen: false,
     server: {
-      port: 1420,
+      port,
       strictPort: true,
       host: host || false,
       hmr: stable
@@ -21,7 +23,7 @@ export default defineConfig(async ({ mode }) => {
           ? {
               protocol: "ws",
               host,
-              port: 1421,
+              port,
             }
           : undefined,
       watch: {

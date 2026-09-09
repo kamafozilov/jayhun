@@ -34,6 +34,38 @@ To try the default WebKit renderer again on Linux:
 WEBKIT_DISABLE_DMABUF_RENDERER=0 npm start
 ```
 
+### Parallel worktree development
+
+Run `npm start` or `npm run tauri:stable` in each linked Git worktree.
+The launcher assigns a stable port and app identifier from the worktree's Git
+metadata. Each worktree owns its chat database, app settings, WebView storage,
+and Rust build output. The window title includes the branch name. Detached
+worktrees show their short commit ID. Switching branches or moving a worktree
+with `git worktree move` keeps its identity; removing and recreating it may not.
+The primary checkout keeps port 1420 and its existing app data.
+
+Linked worktrees default to two Cargo build jobs to limit concurrent CPU and
+memory use. Set `CARGO_BUILD_JOBS` to override this limit. npm and Cargo keep
+using their normal machine caches. Do not share `node_modules` or `target`
+between worktrees: branches can need different dependencies and executables.
+
+If a port is occupied, the launcher stops before starting Tauri. Stop that
+server or choose a free port, for example on macOS or Linux:
+
+```bash
+JAYHUN_DEV_PORT=24001 npm start
+```
+
+Keep an override consistent: browser storage is also scoped to the dev URL.
+Use macOS 14 or newer for separate persistent WebView data stores. Agent CLI
+accounts remain shared on the machine; this isolates Jayhun data, not provider
+credentials. Quit each dev app before removing its worktree. App data outside
+the checkout stays on disk after worktree removal.
+
+The direct `npm run tauri dev` command bypasses this launcher. Use it for a
+single development instance. Worktree setup should only install dependencies
+with `npm ci` and `cargo fetch --locked`; launch apps separately when needed.
+
 For development with file watching, use `npm run tauri dev`. On affected Linux
 machines, use `WEBKIT_DISABLE_DMABUF_RENDERER=1 npm run tauri dev`.
 `npm run dev` starts only the frontend, without native desktop features.
