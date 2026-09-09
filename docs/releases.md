@@ -32,7 +32,7 @@ for the updater signature.
 
 ## Prepare a release
 
-1. Run `pnpm run set-version 0.1.42` with the next version.
+1. Run `pnpm run set-version <next-version>` with the next version.
 2. Update `CHANGELOG.md` and `docs/release-notes.md`.
 3. Commit and push the release changes.
 4. Run **Build release** from GitHub Actions on that branch, or push the

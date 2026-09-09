@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.43] - 2026-09-09
+
 ### Added
 - OMP Fast mode with backend-confirmed preferences and retryable setting failures.
 
