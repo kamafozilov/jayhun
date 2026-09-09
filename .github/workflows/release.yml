@@ -45,7 +45,9 @@ jobs:
           else
             gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Jayhun $tag" --notes-file docs/release-notes.md
           fi
-          echo "id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$tag\") | .id")" >> "$GITHUB_OUTPUT"
+          release_id=$(gh release view "$tag" --json databaseId --jq .databaseId)
+          [[ "$release_id" =~ ^[0-9]+$ ]] || { echo 'Missing release ID'; exit 1; }
+          echo "id=$release_id" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   build:
