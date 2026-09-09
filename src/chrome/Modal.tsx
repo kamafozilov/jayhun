@@ -67,42 +67,44 @@ export function ModalPanel({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         onMouseDown={(event) => event.stopPropagation()}
-        className={`modal-panel flex flex-col overflow-hidden rounded-2xl border border-content/10 bg-background-base/55 shadow-2xl backdrop-blur-xl ${className ?? ""}`}
+        className={`flex flex-col overflow-hidden rounded-2xl border border-content/10 relative floating-surface shadow-2xl ${className ?? ""}`}
       >
-        <header
-          className={`flex shrink-0 items-start gap-2 ${size === "lg" ? "px-5 pt-5 sm:px-7 sm:pt-6" : "px-4 pt-3"}`}
-        >
-          <div className="min-w-0 flex-1 pt-0.5">
-            <h2
-              id={titleId}
-              className="text-2xl font-semibold leading-tight text-content"
-            >
-              {title}
-            </h2>
-            {description ? (
-              <p
-                id={descriptionId}
-                className="mt-0.5 truncate text-[12px] leading-snug text-content/50"
-              >
-                {description}
-              </p>
-            ) : null}
-          </div>
-          <button
-            ref={closeRef}
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="grid size-7 shrink-0 place-items-center rounded-md text-content/45 hover:bg-content/8 hover:text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        <div className="modal-panel flex min-h-0 flex-1 flex-col">
+          <header
+            className={`flex shrink-0 items-start gap-2 ${size === "lg" ? "px-5 pt-5 sm:px-7 sm:pt-6" : "px-4 pt-3"}`}
           >
-            <X className="size-3.5" strokeWidth={1.75} />
-          </button>
-        </header>
-        <div
-          ref={lockOverscroll}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-none"
-        >
-          {children}
+            <div className="min-w-0 flex-1 pt-0.5">
+              <h2
+                id={titleId}
+                className="text-2xl font-semibold leading-tight text-content"
+              >
+                {title}
+              </h2>
+              {description ? (
+                <p
+                  id={descriptionId}
+                  className="mt-0.5 truncate text-[12px] leading-snug text-content/50"
+                >
+                  {description}
+                </p>
+              ) : null}
+            </div>
+            <button
+              ref={closeRef}
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              className="grid size-7 shrink-0 place-items-center rounded-md text-content/45 hover:bg-content/8 hover:text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <X className="size-3.5" strokeWidth={1.75} />
+            </button>
+          </header>
+          <div
+            ref={lockOverscroll}
+            className="min-h-0 flex-1 overflow-y-auto overscroll-none"
+          >
+            {children}
+          </div>
         </div>
       </div>
     </div>
