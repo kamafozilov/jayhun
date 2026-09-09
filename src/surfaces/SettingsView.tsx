@@ -101,6 +101,8 @@ import { refreshHarnessCatalogs } from "../lib/harness/registry";
 import {
   defaultModelId,
   getModelSnapshot,
+  getModelPreferencesSnapshot,
+  subscribeModelPreferences,
   isPickerProviderVisible,
   loadDefaultModels,
   loadLastModelChoice,
@@ -1258,26 +1260,21 @@ function ProvidersPage() {
     getHarnessAvailabilitySnapshot,
     getHarnessAvailabilitySnapshot,
   );
-  const [choice, setChoice] = useState(loadLastModelChoice);
-  const [defaultModels, setDefaultModels] = useState(loadDefaultModels);
+  useSyncExternalStore(subscribeModelPreferences, getModelPreferencesSnapshot, getModelPreferencesSnapshot);
+  const choice = loadLastModelChoice();
+  const defaultModels = loadDefaultModels();
+  const [saveError, setSaveError] = useState(false);
 
   useEffect(() => {
     void probeHarnessAvailability();
   }, []);
 
   const onModelChange = (harness: HarnessId, model: string) => {
-    saveDefaultModel(harness, model);
-    setDefaultModels((prev) => ({ ...prev, [harness]: model }));
-    if (choice?.harness === harness) {
-      saveLastModelChoice(harness, model);
-      setChoice({ harness, model });
-    }
+    setSaveError(!saveDefaultModel(harness, model));
   };
 
   const onDefault = (harness: HarnessId, model: string) => {
-    saveLastModelChoice(harness, model);
-    setDefaultModels((prev) => ({ ...prev, [harness]: model }));
-    setChoice({ harness, model });
+    setSaveError(!saveLastModelChoice(harness, model));
   };
 
   return (
@@ -1288,7 +1285,9 @@ function ProvidersPage() {
         Turn off Show in picker to hide an installed provider from those tabs.
         The model beside each provider is what new conversations use when that
         provider is selected; Use by default picks the provider itself.
+        Unused drafts follow these defaults until you choose a model or send a message.
       </p>
+      {saveError ? <p role="alert">Could not save provider preferences. Try again.</p> : null}
       {HARNESSES.map((harness) => (
         <ProviderRow
           key={harness}
@@ -1299,7 +1298,7 @@ function ProvidersPage() {
               ? choice.model
               : defaultModelId(harness))
           }
-          isDefault={choice?.harness === harness}
+          isDefault={(choice?.harness ?? "cursor") === harness}
           onDefault={onDefault}
           onModelChange={onModelChange}
         />
@@ -1324,7 +1323,7 @@ function ProviderRow({
   const models = modelsFor(harness);
   const available = isHarnessAvailable(harness);
   const current =
-    models.length > 0 ? resolveModel(harness, selectedModel) : null;
+    resolveModel(harness, selectedModel);
   const [inPicker, setInPicker] = useState(() =>
     isPickerProviderVisible(harness),
   );
@@ -1361,16 +1360,18 @@ function ProviderRow({
       {current ? (
         <Select
           label={`${HARNESS_TITLE[harness]} model`}
-          value={current.id}
+          value={selectedModel}
           onChange={(next) => onModelChange(harness, next)}
-          options={models.map((item) => ({
-            value: item.id,
-            label: item.name,
-          }))}
+          options={[
+            ...models.map((item) => ({ value: item.id, label: item.name })),
+            ...(!models.some((item) => item.id === selectedModel)
+              ? [{ value: selectedModel, label: selectedModel || "Provider default" }]
+              : []),
+          ]}
         />
       ) : null}
       <SecondaryButton
-        onClick={() => current && onDefault(harness, current.id)}
+        onClick={() => onDefault(harness, selectedModel)}
         disabled={isDefault || !current}
       >
         {isDefault ? "Default" : "Use by default"}

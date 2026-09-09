@@ -189,6 +189,7 @@ const HIDDEN_PICKER_PROVIDERS_KEY = "jayhun.hiddenPickerProviders";
 const LAST_MODEL_KEY = "jayhun.lastModel";
 const LAST_MODEL_SETTINGS_KEY = "jayhun.lastModelSettings";
 const DEFAULT_MODELS_KEY = "jayhun.defaultModels";
+const MODEL_PREFERENCES_KEY = "jayhun.modelPreferences";
 
 export type ModelPickerTab = "favorites" | HarnessId;
 
@@ -572,33 +573,107 @@ export function stepModelPickerTab(
   return tabs[(from + delta + tabs.length) % tabs.length] ?? tab;
 }
 
-export function loadDefaultModels(): Partial<Record<HarnessId, string>> {
+type ModelPreferences = {
+  choice: LastModelChoice | null;
+  models: Partial<Record<HarnessId, string>>;
+};
+
+function parseChoice(value: unknown): LastModelChoice | null {
+  if (!value || typeof value !== "object") return null;
+  const { harness, model } = value as Record<string, unknown>;
+  return typeof harness === "string" &&
+    isHarnessId(harness) &&
+    typeof model === "string"
+    ? { harness, model }
+    : null;
+}
+
+function parseDefaultModels(value: unknown): ModelPreferences["models"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key, model]) => isHarnessId(key) && typeof model === "string",
+    ),
+  );
+}
+
+function readPreferenceJson(key: string): unknown {
   try {
-    const raw = localStorage.getItem(DEFAULT_MODELS_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    const out: Partial<Record<HarnessId, string>> = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      if (isHarnessId(key) && typeof value === "string" && value) {
-        out[key] = value;
-      }
-    }
-    return out;
+    return JSON.parse(localStorage.getItem(key) ?? "null");
   } catch {
-    return {};
+    return null;
   }
 }
 
-export function saveDefaultModel(harness: HarnessId, model: string) {
-  const next = { ...loadDefaultModels(), [harness]: model };
-  try {
-    localStorage.setItem(DEFAULT_MODELS_KEY, JSON.stringify(next));
-  } catch {
-    // private mode / quota
+function readModelPreferences(): ModelPreferences {
+  const raw = readPreferenceJson(MODEL_PREFERENCES_KEY);
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const value = raw as Record<string, unknown>;
+    const choice = parseChoice(value.choice);
+    if ((value.choice === null || choice) && value.models &&
+        typeof value.models === "object" && !Array.isArray(value.models)) {
+      return { choice, models: parseDefaultModels(value.models) };
+    }
   }
+  // Read legacy records independently: a corrupt model map must not discard
+  // a valid provider choice. Migrate only after a successful atomic write.
+  return {
+    choice: parseChoice(readPreferenceJson(LAST_MODEL_KEY)),
+    models: parseDefaultModels(readPreferenceJson(DEFAULT_MODELS_KEY)),
+  };
+}
+
+const preferenceListeners = new Set<() => void>();
+
+export function getModelPreferencesSnapshot(): string {
+  return JSON.stringify(readModelPreferences());
+}
+
+export function subscribeModelPreferences(listener: () => void): () => void {
+  preferenceListeners.add(listener);
+  const onStorage = (event: StorageEvent) => {
+    if (event.storageArea && event.storageArea !== localStorage) return;
+    if (
+      event.key == null ||
+      [MODEL_PREFERENCES_KEY, LAST_MODEL_KEY, DEFAULT_MODELS_KEY].includes(
+        event.key,
+      )
+    ) {
+      listener();
+    }
+  };
+  if (typeof window !== "undefined")
+    window.addEventListener("storage", onStorage);
+  return () => {
+    preferenceListeners.delete(listener);
+    if (typeof window !== "undefined")
+      window.removeEventListener("storage", onStorage);
+  };
+}
+
+function saveModelPreferences(value: ModelPreferences): boolean {
+  try {
+    localStorage.setItem(MODEL_PREFERENCES_KEY, JSON.stringify(value));
+  } catch {
+    return false;
+  }
+  for (const listener of preferenceListeners) listener();
+  return true;
+}
+
+export function loadDefaultModels(): Partial<Record<HarnessId, string>> {
+  return readModelPreferences().models;
+}
+
+export function saveDefaultModel(harness: HarnessId, model: string): boolean {
+  const previous = readModelPreferences();
+  return saveModelPreferences({
+    choice:
+      previous.choice?.harness === harness
+        ? { harness, model }
+        : previous.choice,
+    models: { ...previous.models, [harness]: model },
+  });
 }
 
 /** User-picked model for a provider, else the catalog default. */
@@ -618,34 +693,18 @@ export function defaultSessionChoice(): LastModelChoice {
 }
 
 export function loadLastModelChoice(): LastModelChoice | null {
-  try {
-    const raw = localStorage.getItem(LAST_MODEL_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed === "object" &&
-      parsed != null &&
-      "harness" in parsed &&
-      "model" in parsed &&
-      typeof (parsed as LastModelChoice).harness === "string" &&
-      typeof (parsed as LastModelChoice).model === "string" &&
-      isHarnessId((parsed as LastModelChoice).harness)
-    ) {
-      return parsed as LastModelChoice;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return readModelPreferences().choice;
 }
 
-export function saveLastModelChoice(harness: HarnessId, model: string) {
-  saveDefaultModel(harness, model);
-  try {
-    localStorage.setItem(LAST_MODEL_KEY, JSON.stringify({ harness, model }));
-  } catch {
-    // private mode / quota
-  }
+export function saveLastModelChoice(
+  harness: HarnessId,
+  model: string,
+): boolean {
+  const previous = readModelPreferences();
+  return saveModelPreferences({
+    choice: { harness, model },
+    models: { ...previous.models, [harness]: model },
+  });
 }
 
 function parseStringRecord(value: unknown): Record<string, string> {

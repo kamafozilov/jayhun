@@ -188,6 +188,8 @@ import { useLegacyCodexIdentityRecovery } from "./hooks/useLegacyCodexIdentityRe
 import { activeTurnIdentity, requestedTurnIdentity } from "./lib/turnIdentity";
 import {
   modelSelectionError,
+  subscribeModels,
+  subscribeModelPreferences,
   preferredModelSettings,
   resolveModel,
   saveLastModelSettings,
@@ -232,6 +234,9 @@ import {
   formatSessionTitle,
   sessionNeedsInput,
   newDefaultSession,
+  refreshSessionModel,
+  followSessionDefaults,
+  sealSessionDefaults,
   newSession,
   sessionDisplayTitle,
   sessionWorkCwd,
@@ -442,6 +447,7 @@ function withHarnessChoice(
 ): Session {
   return {
     ...session,
+    followsDefault: false,
     harness,
     model,
     modelSettings,
@@ -570,7 +576,7 @@ export default function App({
     return { session, tab };
   });
   const [sessions, setSessions] = useState<Session[]>(
-    () => windowTransfer?.sessions ?? resumed?.sessions ?? [seed.session],
+    () => (windowTransfer?.sessions ?? resumed?.sessions ?? [seed.session]).map(followSessionDefaults),
   );
   const [tabs, setTabs] = useState<WorkspaceTab[]>(
     () => windowTransfer?.tabs ?? resumed?.tabs ?? [seed.tab],
@@ -839,6 +845,11 @@ export default function App({
     };
   }, [resumed]);
 
+  useEffect(() => subscribeModelPreferences(() => {
+    sessionsRef.current = sessionsRef.current.map(followSessionDefaults);
+    setSessions((prev) => prev.map(followSessionDefaults));
+  }), []);
+
   useEffect(() => {
     void probeHarnessAvailability();
     // Only the harnesses already in this window. Probing every installed CLI
@@ -846,7 +857,11 @@ export default function App({
     const harnesses = [
       ...new Set(sessionsRef.current.map((session) => session.harness)),
     ];
+    const unsubscribe = subscribeModels(() => {
+      setSessions((prev) => prev.map(refreshSessionModel));
+    });
     void refreshHarnessCatalogs(harnesses);
+    return unsubscribe;
   }, []);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
@@ -1971,12 +1986,9 @@ export default function App({
               return;
             }
             const seed = sessionsRef.current[0];
-            const session = newSession(
-              seed?.harness ?? "claude",
+            const session = newDefaultSession(
               file.cwd || projectCwd,
-              seed?.model,
               seed?.runtimeMode,
-              seed?.modelSettings,
             );
             setSessions((prev) => [...prev, session]);
             setTabs((prev) =>
@@ -2073,13 +2085,7 @@ export default function App({
       const finishClear = () => {
         persistSession(oldSession);
 
-        const session = newSession(
-          oldSession.harness,
-          oldSession.cwd,
-          oldSession.model,
-          oldSession.runtimeMode,
-          oldSession.modelSettings,
-        );
+        const session = newDefaultSession(oldSession.cwd, oldSession.runtimeMode);
 
         setSessions((prev) => [...prev, session]);
         setDirtyFiles((prev) => {
@@ -2548,7 +2554,7 @@ export default function App({
       await stopSessionForRemoval(id);
       await Promise.all(sessionChildHarnesses(current).map(harness => forgetHarnessSession(harness, id)));
       const fresh = {
-        ...newSession(current.harness, current.cwd, current.model, current.runtimeMode, current.modelSettings),
+        ...newDefaultSession(current.cwd, current.runtimeMode),
         title: current.title,
         inboxAsk: current.inboxAsk,
       };
@@ -2713,12 +2719,9 @@ export default function App({
             dirtyFiles: dirtyFilesRef.current,
           }),
           createReplacement: (latest) =>
-            newSession(
-              latest?.harness ?? seed?.harness ?? "cursor",
+            newDefaultSession(
               latest?.cwd ?? seed?.cwd ?? sidebarCwd,
-              latest?.model ?? seed?.model,
               latest?.runtimeMode ?? seed?.runtimeMode,
-              latest?.modelSettings ?? open?.modelSettings,
             ),
           confirmClose: async (closedTabs) => {
             const files = filesInWorkspaceTabs(closedTabs);
@@ -2987,13 +2990,7 @@ export default function App({
       ) {
         setProjectCwd(normalized);
         setRecents(rememberProject(normalized));
-        const session = newSession(
-          current.harness,
-          normalized,
-          current.model,
-          current.runtimeMode,
-          current.modelSettings,
-        );
+        const session = newDefaultSession(normalized, current.runtimeMode);
         const tab = newTab(session.id);
         setSessions((prev) => [...prev, session]);
         appendTab(tab, normalized);
@@ -3105,13 +3102,7 @@ export default function App({
       }
 
       const seed = current ?? sessionsRef.current[0];
-      const session = newSession(
-        seed?.harness ?? "claude",
-        normalized,
-        seed?.model,
-        seed?.runtimeMode,
-        seed?.modelSettings,
-      );
+      const session = newDefaultSession(normalized, seed?.runtimeMode);
       const tab = newTab(session.id);
       setProjectCwd(normalized);
       setRecents(rememberProject(normalized));
@@ -3395,7 +3386,7 @@ export default function App({
       if (plan.kind === "empty") {
         void forgetHarnessSession(plan.forget, sessionId);
       }
-      setSessions((prev) =>
+      const update = (prev: Session[]) =>
         prev.map((s) => {
           if (s.id !== sessionId) return s;
           const next = withHarnessChoice(
@@ -3420,8 +3411,9 @@ export default function App({
             return { ...next, pendingSwitch: undefined };
           }
           return next;
-        }),
-      );
+        });
+      sessionsRef.current = update(sessionsRef.current);
+      setSessions(update);
     },
     [],
   );
@@ -3429,9 +3421,11 @@ export default function App({
   const onModelSettingsChange = useCallback(
     (sessionId: string, modelSettings: Record<string, string>) => {
       saveLastModelSettings(modelSettings);
-      setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, modelSettings } : s)),
+      const update = (prev: Session[]) => prev.map((s) =>
+        s.id === sessionId ? { ...s, followsDefault: false, modelSettings } : s,
       );
+      sessionsRef.current = update(sessionsRef.current);
+      setSessions(update);
     },
     [],
   );
@@ -3466,7 +3460,7 @@ export default function App({
       if (!storedCurrent) return;
       const current = options?.buildTarget
         ? withPlanBuildTarget(storedCurrent, options.buildTarget)
-        : storedCurrent;
+        : sealSessionDefaults(storedCurrent);
       const intent = options?.intent ?? "default";
       const approvedPlan = options?.planBlockId
         ? current.blocks.find(
@@ -3497,6 +3491,8 @@ export default function App({
         return;
       }
       if (isPreparingHandoff(current)) return;
+      // Seal synchronously so a preference notification cannot retarget this turn.
+      sessionsRef.current = sessionsRef.current.map((s) => s.id === sessionId ? current : s);
       const workCwd = sessionWorkCwd(current);
       const submittedText = intent === "build" ? "Build approved plan" : text;
       const rawCommand = isNativeCommandPrompt(submittedText, current.harness);
@@ -3690,7 +3686,13 @@ export default function App({
           if (s.id !== sessionId) return s;
           const selected = options?.buildTarget
             ? withPlanBuildTarget(s, options.buildTarget)
-            : s;
+            : {
+                ...s,
+                harness: current.harness,
+                model: current.model,
+                modelSettings: current.modelSettings,
+                followsDefault: false,
+              };
           const titled = isFirstTurn ? titleSeed : selected.title;
           let next: Session = {
             ...selected,

@@ -6,6 +6,9 @@ import type { InboxAskContext } from "./inboxAsk";
 import type { NoteCardMeta, NoteComposerCard } from "./notes";
 import {
   defaultSessionChoice,
+  hasLiveCatalog,
+  mergeModelSettings,
+  loadLastModelSettings,
   preferredModelId,
   preferredModelSettings,
   resolveModel,
@@ -219,6 +222,8 @@ export const RUNTIME_MODE_HINT: Record<RuntimeMode, string> = {
 };
 
 export type Session = {
+  /** Only unused drafts created from Settings inherit later default changes. */
+  followsDefault?: boolean;
   /** Temporary Inbox conversation: shares the runtime, never saved as a session. */
   inboxAsk?: InboxAskContext;
   id: string;
@@ -315,7 +320,10 @@ export function newSession(
     id: crypto.randomUUID(),
     harness,
     model: resolved.id,
-    modelSettings: preferredModelSettings(resolved, modelSettings),
+    modelSettings:
+      !hasLiveCatalog(harness) && !resolved.settings
+        ? { ...modelSettings, ...loadLastModelSettings() }
+        : preferredModelSettings(resolved, modelSettings),
     runtimeMode,
     title: HARNESS_LABEL[harness],
     cwd,
@@ -323,13 +331,81 @@ export function newSession(
   };
 }
 
-/** New conversation using the Providers defaults. */
+/**
+ * Fresh drafts inherit Settings until a model choice or their first submission.
+ */
 export function newDefaultSession(
   cwd = "~",
   runtimeMode: RuntimeMode = DEFAULT_RUNTIME_MODE,
 ): Session {
   const choice = defaultSessionChoice();
-  return newSession(choice.harness, cwd, choice.model, runtimeMode);
+  return {
+    ...newSession(choice.harness, cwd, choice.model, runtimeMode),
+    followsDefault: true,
+  };
+}
+
+/** Never infer inheritance for old records or revive it after a turn. */
+export function followSessionDefaults(session: Session): Session {
+  if (
+    !session.followsDefault ||
+    session.busy ||
+    session.blocks.length > 0 ||
+    session.providerSessionId ||
+    session.pendingSwitch ||
+    session.queuedMessages?.length
+  )
+    return session;
+  const choice = defaultSessionChoice();
+  const model = resolveModel(choice.harness, choice.model);
+  const modelSettings =
+    !hasLiveCatalog(choice.harness) && !model.settings
+      ? loadLastModelSettings()
+      : preferredModelSettings(model);
+  if (
+    session.harness === choice.harness &&
+    session.model === model.id &&
+    JSON.stringify(session.modelSettings) === JSON.stringify(modelSettings)
+  )
+    return session;
+  return {
+    ...session,
+    harness: choice.harness,
+    model: model.id,
+    modelSettings,
+    title:
+      session.title === HARNESS_LABEL[session.harness]
+        ? HARNESS_LABEL[choice.harness]
+        : session.title,
+  };
+}
+
+/** Reconcile draft preferences and catalogs before React commits queued updates. */
+export function sealSessionDefaults(session: Session): Session {
+  return {
+    ...refreshSessionModel(followSessionDefaults(session)),
+    followsDefault: false,
+  };
+}
+
+/** Resolve deferred catalogs without rewriting active turns or saved history. */
+export function refreshSessionModel(session: Session): Session {
+  if (
+    !hasLiveCatalog(session.harness) ||
+    session.busy ||
+    session.blocks.length > 0 ||
+    session.providerSessionId ||
+    session.pendingSwitch
+  )
+    return session;
+  const resolved = resolveModel(session.harness, session.model || undefined);
+  const modelSettings = mergeModelSettings(resolved, session.modelSettings);
+  if (
+    resolved.id === session.model &&
+    JSON.stringify(modelSettings) === JSON.stringify(session.modelSettings)
+  )
+    return session;
+  return { ...session, model: resolved.id, modelSettings };
 }
 
 /** First line of a prompt, truncated for the tab strip. */
