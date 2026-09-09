@@ -362,9 +362,12 @@ export function followSessionDefaults(session: Session): Session {
   };
 }
 
-/** Read at the send boundary too, before React can commit a preference update. */
+/** Reconcile draft preferences and catalogs before React commits queued updates. */
 export function sealSessionDefaults(session: Session): Session {
-  return { ...followSessionDefaults(session), followsDefault: false };
+  return {
+    ...refreshSessionModel(followSessionDefaults(session)),
+    followsDefault: false,
+  };
 }
 
 /** Resolve deferred catalogs without rewriting active turns or saved history. */

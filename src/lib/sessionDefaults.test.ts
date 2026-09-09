@@ -90,6 +90,29 @@ describe("draft inheritance", () => {
     });
   });
 
+  it.each(["busy", "history", "provider", "pending"])(
+    "does not reconcile model or settings at send for a %s session",
+    (kind) => {
+      const draft = newSession("claude", "~", "claude:removed");
+      draft.modelSettings = { effort: "extra-high" };
+      if (kind === "busy") draft.busy = true;
+      if (kind === "history")
+        draft.blocks = [{ id: "u", role: "user", text: "hello" }];
+      if (kind === "provider") draft.providerSessionId = "existing";
+      if (kind === "pending") draft.pendingSwitch = {
+        from: "codex",
+        fromModel: "codex:saved",
+        fromSettings: {},
+      };
+      setHarnessModels("claude", modelsFor("claude"));
+      saveLastModelChoice("cursor", defaultModelId("cursor"));
+      expect(sealSessionDefaults(draft)).toEqual({
+        ...draft,
+        followsDefault: false,
+      });
+    },
+  );
+
   it.each([true, false])(
     "preserves draft provenance through snapshots and transfer, inherited=%s",
     (inherited) => {

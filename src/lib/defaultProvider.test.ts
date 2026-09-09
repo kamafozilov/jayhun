@@ -11,6 +11,7 @@ import {
 import * as models from "./models";
 import * as session from "./session";
 import * as handoff from "./handoff";
+import { appendUser } from "./harness/apply";
 import { dropContextWindow } from "./contextUsage";
 import * as layout from "./layout";
 import * as projects from "./recents";
@@ -355,4 +356,98 @@ it("an explicit cross-provider Build keeps its handoff and clears the old provid
   expect(
     build(selected, { harness: "codex", model: "codex:explicit" }),
   ).toEqual(selected);
+});
+
+describe("first submission before a catalog update commits", () => {
+  it.each([
+    { inherited: false, savedModel: "claude:removed" },
+    { inherited: true, savedModel: "claude:removed" },
+    { inherited: false, savedModel: "claude:available" },
+    { inherited: true, savedModel: "claude:available" },
+  ])(
+    "reconciles model and settings at send, inherited=$inherited, saved=$savedModel",
+    async ({ inherited, savedModel }) => {
+      models.saveLastModelChoice("claude", savedModel);
+      models.saveLastModelSettings({ effort: "extra-high", obsolete: "true" });
+      const draft = inherited
+        ? newDefaultSession()
+        : newSession("claude", "~", savedModel);
+      // An explicit draft must keep Claude even when Settings selects Codex.
+      if (!inherited) models.saveLastModelChoice("codex", "codex:other");
+      draft.title = "Catalog race";
+      const sessionsRef = { current: [draft] };
+      const updates: Array<(prev: Session[]) => Session[]> = [];
+      const turnGen = { current: new Map<string, number>() };
+      let finishTurn!: () => void;
+      const turn = new Promise<void>((resolve) => { finishTurn = resolve; });
+      const sendHarnessTurn = vi.fn(() => turn);
+      const submit = callback("onSubmit", {
+        ...models,
+        ...session,
+        appendUser,
+        sessionsRef,
+        turnGen,
+        removingSessionIds: { current: new Set() },
+        isPreparingHandoff: () => false,
+        isNativeCommandPrompt: () => false,
+        composeNoteMessage: (_card: unknown, text: string) => text,
+        displayAttachments: () => [],
+        userTurnCards: () => undefined,
+        canReplaceSessionTitle: () => false,
+        isLiveHarness: () => true,
+        pendingHandoff: () => null,
+        setSessions: (update: (prev: Session[]) => Session[]) => updates.push(update),
+        beginSessionTurn: async () => {},
+        prepareAttachments: async () => [],
+        preparePrompt: async (text: string) => text,
+        inboxAskPrompt: (_context: unknown, text: string) => text,
+        sendHarnessTurn,
+      });
+      // The catalog notification queued an update, but React has not committed it.
+      models.setHarnessModels("claude", [{
+        id: "claude:available",
+        harness: "claude",
+        name: "Available",
+        settings: [{
+          id: "effort",
+          label: "Effort",
+          kind: "select",
+          value: "high",
+          options: [
+            { value: "high", label: "High" },
+            { value: "xhigh", label: "Extra high" },
+          ],
+        }],
+      }]);
+      updates.push((prev) => prev.map(session.refreshSessionModel));
+      try {
+        submit(draft.id, "hello");
+        // Another catalog arrives while prompt preparation is awaiting I/O.
+        models.setHarnessModels("claude", [{
+          id: "claude:later",
+          harness: "claude",
+          name: "Later",
+        }]);
+        updates.push((prev) => prev.map(session.refreshSessionModel));
+        await vi.waitFor(() => expect(sendHarnessTurn).toHaveBeenCalledOnce());
+        expect(sendHarnessTurn).toHaveBeenCalledWith(expect.objectContaining({
+          harness: "claude",
+          model: "claude:available",
+          modelSettings: { effort: "xhigh" },
+        }));
+        const committed = updates.reduce((prev, update) => update(prev), [draft]);
+        expect(committed[0]).toMatchObject({
+          harness: "claude",
+          model: "claude:available",
+          modelSettings: { effort: "xhigh" },
+          followsDefault: false,
+          busy: true,
+        });
+      } finally {
+        turnGen.current.delete(draft.id);
+        finishTurn();
+        await turn;
+      }
+    },
+  );
 });
