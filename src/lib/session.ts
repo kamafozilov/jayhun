@@ -147,6 +147,23 @@ export type QueuedMessage = {
 
 export type MessageQueueStatus = "active" | "paused" | "resuming";
 
+export type TurnIdentity = {
+  /** Local identity ID; steering messages share their dispatch ID. */
+  id: string;
+  harness: HarnessId;
+  requestedModel?: string;
+  modelSettings?: Record<string, string>;
+  /** Provider evidence; time-correlated legacy evidence also carries recovery provenance. */
+  providerModel?: string;
+  providerTurnId?: string;
+  providerSessionId?: string;
+  recovery?: {
+    source: "codex-rollout-time-match";
+    providerSessionId: string;
+    providerStartedAt: number;
+  };
+};
+
 export type Block = {
   id: string;
   role: BlockRole;
@@ -155,6 +172,7 @@ export type Block = {
   streaming?: boolean;
   /** Epoch ms when this user turn started. */
   startedAt?: number;
+  turnIdentity?: TurnIdentity;
   /** How long the agent worked on this user turn, in ms. */
   durationMs?: number;
   tool?: {
@@ -380,7 +398,7 @@ export function refreshSessionModel(session: Session): Session {
     session.pendingSwitch
   )
     return session;
-  const resolved = resolveModel(session.harness, session.model);
+  const resolved = resolveModel(session.harness, session.model || undefined);
   const modelSettings = mergeModelSettings(resolved, session.modelSettings);
   if (
     resolved.id === session.model &&

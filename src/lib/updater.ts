@@ -15,6 +15,7 @@ export type UpdaterPhase =
   | "current"
   | "available"
   | "downloading"
+  | "verifying"
   | "ready"
   | "installing"
   | "error";
@@ -49,7 +50,7 @@ function publish(
 export async function previewUpdate() {
   if (
     !import.meta.env.DEV ||
-    ["downloading", "installing"].includes(snapshot.phase)
+    ["downloading", "verifying", "installing"].includes(snapshot.phase)
   )
     return;
   publish({
@@ -69,26 +70,44 @@ export function initializeUpdater() {
   return initialization;
 }
 
-const CHECK_INTERVAL = 6 * 60 * 60 * 1000;
-let lastCheck = 0;
+const STARTUP_DELAY = 15 * 1000;
+const CHECK_INTERVAL = 4 * 60 * 1000;
+let lastCheck: number | null = null;
 export function startUpdater() {
-  void initializeUpdater();
-  if (import.meta.env.DEV) return;
+  if (import.meta.env.DEV) {
+    void initializeUpdater();
+    return;
+  }
+  const startupCheckAt = Date.now() + STARTUP_DELAY;
+  let timer: number | undefined;
   const checkWhenDue = () => {
+    window.clearTimeout(timer);
+    const nextCheckAt =
+      lastCheck === null ? startupCheckAt : lastCheck + CHECK_INTERVAL;
+    const remaining = nextCheckAt - Date.now();
     if (
-      Date.now() - lastCheck >= CHECK_INTERVAL &&
-      !["available", "downloading", "ready", "installing"].includes(
-        snapshot.phase,
-      )
+      remaining <= 0 &&
+      ![
+        "available",
+        "downloading",
+        "verifying",
+        "ready",
+        "installing",
+      ].includes(snapshot.phase)
     ) {
       void runUpdateFlow(false);
     }
+    // A manual check moves the next background check by a full interval.
+    timer = window.setTimeout(
+      checkWhenDue,
+      remaining > 0 ? remaining : CHECK_INTERVAL,
+    );
   };
-  const timer = window.setInterval(checkWhenDue, CHECK_INTERVAL);
+  checkWhenDue();
   window.addEventListener("focus", checkWhenDue);
   window.addEventListener("online", checkWhenDue);
   return () => {
-    window.clearInterval(timer);
+    window.clearTimeout(timer);
     window.removeEventListener("focus", checkWhenDue);
     window.removeEventListener("online", checkWhenDue);
   };
@@ -128,7 +147,9 @@ async function checkForUpdate(
   onProgress?: (snapshot: UpdaterSnapshot) => void,
 ): Promise<UpdaterSnapshot> {
   if (
-    ["checking", "downloading", "ready", "installing"].includes(snapshot.phase)
+    ["checking", "downloading", "verifying", "ready", "installing"].includes(
+      snapshot.phase,
+    )
   )
     return snapshot;
   const currentVersion = await readAppVersion();
@@ -215,7 +236,9 @@ export function installPendingUpdate(
 async function downloadPendingUpdate(
   onProgress?: (snapshot: UpdaterSnapshot) => void,
 ): Promise<UpdaterSnapshot> {
-  if (["downloading", "installing", "ready"].includes(snapshot.phase))
+  if (
+    ["downloading", "verifying", "installing", "ready"].includes(snapshot.phase)
+  )
     return snapshot;
   if (import.meta.env.DEV && snapshot.demo) {
     const base = snapshot;
@@ -263,9 +286,17 @@ async function downloadPendingUpdate(
             ? Math.min(100, Math.floor((downloaded / contentLength) * 100))
             : undefined;
 
+      // Finished means the bytes arrived. Tauri verifies the signature before
+      // download() resolves, so installation must remain unavailable until then.
+      if (
+        event.event === "Progress" &&
+        progress != null &&
+        progress === snapshot.progress
+      )
+        return;
       publish(
         {
-          phase: "downloading",
+          phase: event.event === "Finished" ? "verifying" : "downloading",
           currentVersion,
           availableVersion: update.version,
           progress,

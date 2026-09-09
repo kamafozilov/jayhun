@@ -504,6 +504,13 @@ async function runTurn(live: Live, input: SendTurnInput): Promise<void> {
     const turnId = response.turn?.id;
     if (turnId) {
       live.activeTurnId = live.activeTurnId ?? turnId;
+      if (input.turnId)
+        live.onEvent({
+          type: "turn.identity",
+          turnId: input.turnId,
+          providerTurnId: turnId,
+          providerSessionId: live.threadId,
+        });
     }
     settlePendingTurn(live);
     await turnPromise;

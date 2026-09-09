@@ -11,6 +11,7 @@ import {
 import {
   defaultModelId,
   modelsFor,
+  modelSelectionError,
   nativeModelId,
   resetHarnessModelOverlays,
   resolveModel,
@@ -185,7 +186,8 @@ describe("deferred model catalogs", () => {
     expect(resolveModel("codex").id).toBe("");
     expect(nativeModelId(newSession("codex").model)).toBe("");
     expect(resolveModel("codex", "claude:opus-5").harness).toBe("codex");
-    expect(resolveModel("codex", "claude:opus-5").id).toBe("");
+    expect(resolveModel("codex", "claude:opus-5").id).toBe("claude:opus-5");
+    expect(modelSelectionError("codex", "claude:opus-5")).toContain("does not belong");
   });
 
   it("does not replace a saved prefix match before the live catalog", () => {
@@ -193,13 +195,14 @@ describe("deferred model catalogs", () => {
     expect(newDefaultSession().model).toBe("claude:claude-opus-5-custom");
   });
 
-  it("resolves a missing model only after a nonempty live catalog, without changing saved intent", () => {
+  it("preserves a missing model after a live catalog and requires an explicit choice", () => {
     saveLastModelChoice("claude", "claude:removed");
     const draft = newDefaultSession();
     setHarnessModels("claude", []);
     expect(refreshSessionModel(draft)).toBe(draft);
     setHarnessModels("claude", modelsFor("claude"));
-    expect(refreshSessionModel(draft).model).toBe("claude:sonnet-5");
+    expect(refreshSessionModel(draft).model).toBe("claude:removed");
+    expect(modelSelectionError(draft.harness, draft.model)).toContain("unavailable");
     resetHarnessModelOverlays();
     expect(newDefaultSession().model).toBe("claude:removed");
   });
@@ -216,4 +219,10 @@ describe("deferred model catalogs", () => {
       expect(refreshSessionModel(session)).toBe(session);
     },
   );
+});
+
+it("fills an unselected draft model when its first catalog arrives", () => {
+  const draft = newSession("codex", "~", "");
+  setHarnessModels("codex", [{ id: "codex:available", harness: "codex", name: "Available" }]);
+  expect(sealSessionDefaults(draft).model).toBe("codex:available");
 });

@@ -246,6 +246,8 @@ function sessionFromStub(stub: WorkspaceSessionStub): Session {
   return {
     ...session,
     id: stub.id,
+    model: stub.model,
+    modelSettings: { ...stub.modelSettings },
     ...(stub.followsDefault === true ? { followsDefault: true } : {}),
     title: stub.title,
     ...(stub.inboxAsk ? { inboxAsk: stub.inboxAsk } : {}),

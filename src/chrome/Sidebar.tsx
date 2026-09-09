@@ -19,6 +19,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -35,7 +36,7 @@ import {
   type GitHistoryCommit,
 } from "../lib/fs";
 import { IS_MAC, MOD } from "../lib/platform";
-import { resolveModel } from "../lib/models";
+import { resolveModel, subscribeModels, getModelSnapshot } from "../lib/models";
 import { prettyParent, projectKey, projectName } from "../lib/paths";
 import { sessionDisplayTitle } from "../lib/session";
 import { nextUnseenFinishedSessions } from "../lib/sessionDone";
@@ -2171,6 +2172,7 @@ function SessionCard({
   onRename?: () => void;
   onDelete?: () => void;
 }) {
+  useSyncExternalStore(subscribeModels, getModelSnapshot, getModelSnapshot);
   const skipClickUntil = useRef(0);
   const [dragging, setDragging] = useState(false);
   const title = sessionDisplayTitle(session.title, session.harness);

@@ -184,7 +184,10 @@ import {
 import { notifyDirsChanged } from "./lib/fileTree";
 import { nudgeWatchedFiles } from "./lib/fileWatch";
 import { type EditorNavigationTarget, type OpenFileFn } from "./lib/search";
+import { useLegacyCodexIdentityRecovery } from "./hooks/useLegacyCodexIdentityRecovery";
+import { activeTurnIdentity, requestedTurnIdentity } from "./lib/turnIdentity";
 import {
+  modelSelectionError,
   subscribeModels,
   subscribeModelPreferences,
   preferredModelSettings,
@@ -660,6 +663,7 @@ export default function App({
   /** Project whose listing failed, so the error cannot leak to another one. */
   const [historyErrorCwd, setHistoryErrorCwd] = useState<string | null>(null);
 
+  useLegacyCodexIdentityRecovery(sessions, setSessions);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
   const queueDispatchingRef = useRef(new Set<string>());
@@ -3547,8 +3551,19 @@ export default function App({
           flushHarnessEvents();
           return;
         }
+        const activeIdentity = activeTurnIdentity(current);
+        if (!activeIdentity?.requestedModel) {
+          enqueueHarnessEvent(sessionId, {
+            type: "status",
+            text: "The active turn has no recorded model. Stop it before sending a new request.",
+          });
+          flushHarnessEvents();
+          return;
+        }
         const visible = displayAttachments(attachments);
-        const cards = userTurnCards(noteCard);
+        const activeModel = activeIdentity.requestedModel;
+        const steerGen = turnGen.current.get(sessionId);
+        const cards = { ...userTurnCards(noteCard), turnIdentity: activeIdentity };
         setSessions((prev) =>
           prev.map((s) => {
             if (s.id !== sessionId) return s;
@@ -3572,16 +3587,28 @@ export default function App({
               sessionId,
               cwd: workCwd,
             });
+            if (
+              turnGen.current.get(sessionId) !== steerGen ||
+              !sessionsRef.current.find((s) => s.id === sessionId)?.busy
+            ) {
+              enqueueHarnessEvent(sessionId, {
+                type: "status",
+                text: "The follow-up was not sent because the active turn ended.",
+              });
+              flushHarnessEvents();
+              return;
+            }
             await steerHarnessTurn({
-              harness: current.harness,
+              harness: activeIdentity.harness,
               sessionId,
               cwd: workCwd,
-              model: current.model,
-              modelSettings: current.modelSettings,
+              model: activeModel,
+              modelSettings: activeIdentity.modelSettings,
               text: inboxAskPrompt(rawCommand ? undefined : current.inboxAsk, prompt),
               attachments: prepared,
             });
           } catch (error: unknown) {
+            if (turnGen.current.get(sessionId) !== steerGen) return;
             const message =
               error instanceof Error
                 ? error.message
@@ -3593,6 +3620,26 @@ export default function App({
             flushHarnessEvents();
           }
         })();
+        return;
+      }
+
+      const selectionError = modelSelectionError(current.harness, current.model);
+      if (selectionError) {
+        setSessions((prev) =>
+          prev.map((session) => {
+            if (session.id !== sessionId) return session;
+            return applyHarnessEvent({
+              ...session,
+              queueStatus: "paused",
+              queuedMessages: options?.queuedMessageId || intent === "build"
+                ? session.queuedMessages
+                : [
+                    ...(session.queuedMessages ?? []),
+                    { id: crypto.randomUUID(), text, attachments, noteCard, handoffCard, intent },
+                  ],
+            }, { type: "status", text: selectionError });
+          }),
+        );
         return;
       }
 
@@ -3621,7 +3668,11 @@ export default function App({
           : card
             ? SECOND_OPINION_TITLE
             : submittedText;
-      const cards = rawCommand ? undefined : userTurnCards(noteCard, card);
+      const identity = requestedTurnIdentity(current);
+      const cards = {
+        ...(rawCommand ? {} : userTurnCards(noteCard, card)),
+        turnIdentity: identity,
+      };
       const live = isLiveHarness(current.harness);
       const queuedHandoff =
         live && !pendingSwitch ? pendingHandoff(current) : null;
@@ -3827,11 +3878,12 @@ export default function App({
             ? userMessagesAfterHandoff(current)
             : [];
           await sendHarnessTurn({
-            harness: current.harness,
+            turnId: identity.id,
+            harness: identity.harness,
             sessionId,
             cwd: workCwd,
-            model: current.model,
-            modelSettings: current.modelSettings,
+            model: identity.requestedModel,
+            modelSettings: identity.modelSettings,
             runtimeMode: current.runtimeMode,
             intent,
             text: inboxAskPrompt(rawCommand ? undefined : current.inboxAsk, wrap && !rawCommand
@@ -5468,7 +5520,12 @@ export default function App({
       {whatsNewVersion ? (
         <WhatsNewDialog
           version={whatsNewVersion}
-          onClose={() => setWhatsNewVersion(null)}
+          onClose={() => {
+            setUpdateNotice((notice) =>
+              notice?.version === whatsNewVersion ? null : notice,
+            );
+            setWhatsNewVersion(null);
+          }}
         />
       ) : null}
     </div>

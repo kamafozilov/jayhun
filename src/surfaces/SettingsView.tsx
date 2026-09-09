@@ -713,6 +713,7 @@ function UpdateRow({
   const busy =
     snapshot.phase === "checking" ||
     snapshot.phase === "downloading" ||
+    snapshot.phase === "verifying" ||
     snapshot.phase === "installing";
   const hasUpdate = snapshot.phase === "available";
 
@@ -735,19 +736,21 @@ function UpdateRow({
   const status =
     snapshot.phase === "ready"
       ? "Update downloaded. Restart when you are ready."
-      : snapshot.phase === "installing"
-        ? "Restarting to update…"
-        : snapshot.phase === "available"
-          ? `Version ${snapshot.availableVersion} is available.`
-          : snapshot.phase === "downloading"
-            ? `Downloading${snapshot.progress != null ? ` ${snapshot.progress}%` : "…"}`
-            : snapshot.phase === "checking"
-              ? "Checking for updates…"
-              : snapshot.phase === "current"
-                ? "You're on the latest version."
-                : snapshot.phase === "error"
-                  ? (snapshot.error ?? "Update check failed.")
-                  : "Jayhun updates itself from the release feed.";
+      : snapshot.phase === "verifying"
+        ? "Download complete. Verifying update…"
+        : snapshot.phase === "installing"
+          ? "Restarting to update…"
+          : snapshot.phase === "available"
+            ? `Version ${snapshot.availableVersion} is available.`
+            : snapshot.phase === "downloading"
+              ? `Downloading${snapshot.progress != null ? ` ${snapshot.progress}%` : "…"}`
+              : snapshot.phase === "checking"
+                ? "Checking for updates…"
+                : snapshot.phase === "current"
+                  ? "You're on the latest version."
+                  : snapshot.phase === "error"
+                    ? (snapshot.error ?? "Update check failed.")
+                    : "Jayhun updates itself from the release feed.";
 
   return (
     <Row

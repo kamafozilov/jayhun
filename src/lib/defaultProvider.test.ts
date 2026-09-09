@@ -11,7 +11,8 @@ import {
 import * as models from "./models";
 import * as session from "./session";
 import * as handoff from "./handoff";
-import { appendUser } from "./harness/apply";
+import { appendUser, applyHarnessEvent } from "./harness/apply";
+import { requestedTurnIdentity } from "./turnIdentity";
 import { dropContextWindow } from "./contextUsage";
 import * as layout from "./layout";
 import * as projects from "./recents";
@@ -385,6 +386,8 @@ describe("first submission before a catalog update commits", () => {
         ...models,
         ...session,
         appendUser,
+        applyHarnessEvent,
+        requestedTurnIdentity,
         sessionsRef,
         turnGen,
         removingSessionIds: { current: new Set() },
@@ -422,6 +425,18 @@ describe("first submission before a catalog update commits", () => {
       updates.push((prev) => prev.map(session.refreshSessionModel));
       try {
         submit(draft.id, "hello");
+        if (savedModel === "claude:removed") {
+          expect(sendHarnessTurn).not.toHaveBeenCalled();
+          const committed = updates.reduce((prev, update) => update(prev), [draft]);
+          expect(committed[0]).toMatchObject({
+            harness: "claude",
+            model: savedModel,
+            queueStatus: "paused",
+            queuedMessages: [expect.objectContaining({ text: "hello" })],
+          });
+          expect(JSON.stringify(committed[0].blocks)).toContain("unavailable");
+          return;
+        }
         // Another catalog arrives while prompt preparation is awaiting I/O.
         models.setHarnessModels("claude", [{
           id: "claude:later",

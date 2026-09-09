@@ -16,7 +16,7 @@ export function WhatsNewBody({ version }: { version: string }) {
   const title = releaseNotesTitle(version);
 
   return (
-    <article aria-label={title} className="px-5 py-4">
+    <article aria-label={title} className="px-5 py-5 sm:px-7 sm:pb-7">
       {notes?.markdown ? (
         <AgentMarkdown
           className="whats-new-md"
@@ -41,8 +41,8 @@ export function WhatsNewDialog({ version, onClose }: Props) {
       onClose={onClose}
       title="What's new"
       description={`Jayhun ${version}${date ? ` · ${date}` : ""}`}
-      size="md"
-      className="h-[min(72vh,640px)]"
+      size="lg"
+      className="max-h-[80vh] bg-background-base/95"
     >
       <WhatsNewBody version={version} />
     </Modal>
