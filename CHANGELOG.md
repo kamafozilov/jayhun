@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.1.42] - 2026-09-09
+
+### Fixed
+- Answer Codex questions from the composer.
+- Keep pending workspace saves when chat state changes, so closed files stay closed after restoration.
+- Hide repeated Codex skills budget notices from new and saved conversations.
+- Keep the sidebar at least 280 pixels wide.
+- Add a stable Jayhun development launcher with a Linux WebKit rendering workaround.
+
 ## [0.1.41] - 2026-09-09
 
 ### Added
