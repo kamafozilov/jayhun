@@ -100,6 +100,7 @@ import {
 import { refreshHarnessCatalogs } from "../lib/harness/registry";
 import {
   defaultModelId,
+  defaultSessionChoice,
   getModelSnapshot,
   getModelPreferencesSnapshot,
   subscribeModelPreferences,
@@ -1269,12 +1270,12 @@ function ProvidersPage() {
     void probeHarnessAvailability();
   }, []);
 
-  const onModelChange = (harness: HarnessId, model: string) => {
-    setSaveError(!saveDefaultModel(harness, model));
+  const onModelChange = async (harness: HarnessId, model: string) => {
+    setSaveError(!(await saveDefaultModel(harness, model)));
   };
 
-  const onDefault = (harness: HarnessId, model: string) => {
-    setSaveError(!saveLastModelChoice(harness, model));
+  const onDefault = async (harness: HarnessId, model: string) => {
+    setSaveError(!(await saveLastModelChoice(harness, model)));
   };
 
   return (
@@ -1298,7 +1299,7 @@ function ProvidersPage() {
               ? choice.model
               : defaultModelId(harness))
           }
-          isDefault={(choice?.harness ?? "cursor") === harness}
+          isDefault={defaultSessionChoice().harness === harness}
           onDefault={onDefault}
           onModelChange={onModelChange}
         />

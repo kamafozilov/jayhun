@@ -11,6 +11,7 @@ mod linear;
 #[cfg(target_os = "macos")]
 mod macos;
 mod menu;
+mod model_preferences;
 mod notes;
 mod notifications;
 mod project_logo;
@@ -177,6 +178,7 @@ pub fn run() {
         .setup(|app| {
             harness::reap_orphaned_harness_processes();
             session_store::init(app.handle())?;
+            model_preferences::init(app.handle())?;
             checkpoint::init(app.handle())?;
             menu::install(app.handle())?;
             #[cfg(target_os = "macos")]
@@ -290,6 +292,8 @@ pub fn run() {
             pty::pty_status,
             pty::pty_kill,
             pty::pty_kill_all,
+            model_preferences::model_preferences_load,
+            model_preferences::model_preferences_save,
             session_store::session_upsert,
             session_store::session_list_by_project,
             session_store::session_search,

@@ -17,7 +17,7 @@ import {
 } from "./sessionStore";
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
-vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke, isTauri: () => false }));
 
 function deferred() {
   let resolve!: () => void;

@@ -118,18 +118,18 @@ function workspace() {
   };
   return { env, sessions: () => sessions };
 }
-beforeEach(() => {
+beforeEach(async () => {
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (k: string) => values.get(k) ?? null,
     setItem: (k: string, v: string) => values.set(k, v),
   });
   models.resetHarnessModelOverlays();
-  models.saveLastModelChoice("codex", models.defaultModelId("codex"));
+  await models.saveLastModelChoice("codex", models.defaultModelId("codex"));
 });
 describe("default provider creation boundaries", () => {
-  it.each(HARNESSES)("newDefaultSession honors %s", (harness) => {
-    models.saveLastModelChoice(harness, models.defaultModelId(harness));
+  it.each(HARNESSES)("newDefaultSession honors %s", async (harness) => {
+    await models.saveLastModelChoice(harness, models.defaultModelId(harness));
     expect(newDefaultSession().harness).toBe(harness);
   });
   it.each([
@@ -158,17 +158,17 @@ describe("default provider creation boundaries", () => {
 });
 
 describe("default provider boundary probes", () => {
-  it("an already-created New callback reads an updated default", () => {
+  it("an already-created New callback reads an updated default", async () => {
     const w = workspace();
     const run = callback("onNew", w.env);
-    models.saveLastModelChoice("cursor", models.defaultModelId("cursor"));
+    await models.saveLastModelChoice("cursor", models.defaultModelId("cursor"));
     run();
     expect(w.sessions()[1].harness).toBe("cursor");
   });
-  it("project creation reads the latest saved default", () => {
+  it("project creation reads the latest saved default", async () => {
     const w = workspace();
     const run = callback("onSelectProject", w.env);
-    models.saveLastModelChoice("cursor", models.defaultModelId("cursor"));
+    await models.saveLastModelChoice("cursor", models.defaultModelId("cursor"));
     run("/tmp/new");
     expect(models.defaultSessionChoice().harness).toBe("cursor");
     expect(w.sessions()[1].harness).toBe("cursor");
@@ -194,14 +194,14 @@ describe("default provider boundary probes", () => {
     expect(restored?.sessions[0].harness).toBe("claude");
     expect(newDefaultSession().harness).toBe("codex");
   });
-  it("a saved live-only default model survives cold startup and catalog loading", () => {
+  it("a saved live-only default model survives cold startup and catalog loading", async () => {
     const saved = {
       id: "claude:audit-custom-model",
       harness: "claude" as const,
       name: "Audit custom model",
     };
     models.setHarnessModels("claude", [...models.modelsFor("claude"), saved]);
-    models.saveLastModelChoice("claude", saved.id);
+    await models.saveLastModelChoice("claude", saved.id);
     expect(newDefaultSession().model).toBe(saved.id);
     models.resetHarnessModelOverlays();
     const cold = newDefaultSession();
@@ -283,10 +283,10 @@ it("Inbox Ask restart uses defaults and retains the Inbox context", async () => 
   });
 });
 
-it("defaults retarget inherited drafts and preserve their runtime", () => {
-  models.saveLastModelChoice("claude", "claude:opus-5");
+it("defaults retarget inherited drafts and preserve their runtime", async () => {
+  await models.saveLastModelChoice("claude", "claude:opus-5");
   const draft = newDefaultSession("/tmp/old", "auto");
-  models.saveLastModelChoice("cursor", models.defaultModelId("cursor"));
+  await models.saveLastModelChoice("cursor", models.defaultModelId("cursor"));
   models.setHarnessModels("claude", models.modelsFor("claude"));
   expect(followSessionDefaults(draft)).toMatchObject({
     harness: "cursor",
@@ -306,7 +306,7 @@ it("opening a project without any seed still reads Settings", () => {
 
 it.each(["onModelChange", "onModelSettingsChange"])(
   "%s seals inheritance before React commits",
-  (name) => {
+  async (name) => {
     const w = workspace();
     const draft = w.sessions()[0];
     draft.blocks = [];
@@ -329,12 +329,12 @@ it.each(["onModelChange", "onModelSettingsChange"])(
     );
     const selected = w.env.sessionsRef.current[0];
     expect(selected.followsDefault).toBe(false);
-    models.saveLastModelChoice("cursor", models.defaultModelId("cursor"));
+    await models.saveLastModelChoice("cursor", models.defaultModelId("cursor"));
     expect(followSessionDefaults(selected)).toBe(selected);
   },
 );
 
-it("an explicit cross-provider Build keeps its handoff and clears the old provider identity", () => {
+it("an explicit cross-provider Build keeps its handoff and clears the old provider identity", async () => {
   const w = workspace();
   const source = w.sessions()[0];
   source.providerSessionId = "claude-thread";
@@ -343,7 +343,7 @@ it("an explicit cross-provider Build keeps its handoff and clears the old provid
   const env = { ...w.env, ...session, ...handoff, dropContextWindow };
   const withHarnessChoice = callback("withHarnessChoice", env);
   const build = callback("withPlanBuildTarget", { ...env, withHarnessChoice });
-  models.saveLastModelChoice("cursor", models.defaultModelId("cursor"));
+  await models.saveLastModelChoice("cursor", models.defaultModelId("cursor"));
   const selected = build(source, { harness: "codex", model: "codex:explicit" });
   expect(selected).toMatchObject({
     harness: "codex",
@@ -368,13 +368,13 @@ describe("first submission before a catalog update commits", () => {
   ])(
     "reconciles model and settings at send, inherited=$inherited, saved=$savedModel",
     async ({ inherited, savedModel }) => {
-      models.saveLastModelChoice("claude", savedModel);
+      await models.saveLastModelChoice("claude", savedModel);
       models.saveLastModelSettings({ effort: "extra-high", obsolete: "true" });
       const draft = inherited
         ? newDefaultSession()
         : newSession("claude", "~", savedModel);
       // An explicit draft must keep Claude even when Settings selects Codex.
-      if (!inherited) models.saveLastModelChoice("codex", "codex:other");
+      if (!inherited) await models.saveLastModelChoice("codex", "codex:other");
       draft.title = "Catalog race";
       const sessionsRef = { current: [draft] };
       const updates: Array<(prev: Session[]) => Session[]> = [];

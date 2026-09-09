@@ -7,7 +7,7 @@ import {
 } from "./notifications";
 import { newSession } from "./session";
 const { play } = vi.hoisted(() => ({ play: vi.fn() }));
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), isTauri: () => false }));
 vi.mock("cuelume", () => ({ play, setEnabled: vi.fn(), setVolume: vi.fn() }));
 beforeEach(() => {
   const data = new Map<string, string>();

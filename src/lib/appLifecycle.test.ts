@@ -7,6 +7,7 @@ import { newTab } from "./layout";
 import { closeBusyWindow, setQuitWorkspace } from "./appLifecycle";
 
 vi.mock("@tauri-apps/api/core", () => ({
+  isTauri: () => false,
   invoke: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({

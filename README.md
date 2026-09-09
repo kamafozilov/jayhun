@@ -43,8 +43,8 @@ WEBKIT_DISABLE_DMABUF_RENDERER=0 pnpm start
 
 Run `pnpm start` or `pnpm run tauri:stable` in each linked Git worktree.
 The launcher assigns a stable port and app identifier from the worktree's Git
-metadata. Each worktree owns its chat database, app settings, WebView storage,
-and Rust build output. The window title includes the branch name. Detached
+metadata. Each worktree owns its chat database, window settings, WebView storage,
+and Rust build output. Provider defaults are shared (see below). The window title includes the branch name. Detached
 worktrees show their short commit ID. Switching branches or moving a worktree
 with `git worktree move` keeps its identity; removing and recreating it may not.
 The primary checkout keeps port 1420 and its existing app data.
@@ -76,6 +76,24 @@ separately when needed.
 For development with file watching, use `pnpm run tauri dev`. On affected Linux
 machines, use `WEBKIT_DISABLE_DMABUF_RENDERER=1 pnpm run tauri dev`.
 `pnpm run dev` starts only the frontend, without native desktop features.
+
+### Default provider and model
+
+Settings → Providers → **Use by default** saves the provider and its model for
+new conversations. Desktop development builds, linked worktrees, and releases
+share this choice in `dev.kamafozilov.jayhun/model-preferences.db` under the
+platform's user data directory. Changing a development port or installing an
+update does not reset it. Other workspace data remains isolated.
+
+The shared preferences load before sessions are created. Existing browser-local
+defaults migrate when that origin first opens the updated app; once a shared
+default exists, stale local defaults cannot overwrite it. An installation with
+no saved choice starts with Codex. Catalog discovery does not initiate Cursor
+login; interactive Cursor use still supports authentication.
+
+Changes reach other windows immediately and separate app instances when they
+regain focus. Frontend-only browser previews (`pnpm run dev`) still use
+origin-local storage because they do not have the desktop persistence backend.
 
 ## Checks and builds
 

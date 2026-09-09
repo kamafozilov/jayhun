@@ -25,25 +25,25 @@ import {
 import { newTab } from "./layout";
 import { collectWindowTransfer } from "./windowTransfer";
 
-beforeEach(() => {
+beforeEach(async () => {
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => values.set(key, value),
   });
   resetHarnessModelOverlays();
-  saveLastModelChoice("claude", "claude:opus-5");
+  await saveLastModelChoice("claude", "claude:opus-5");
 });
 
 describe("draft inheritance", () => {
-  it("preserves identity, project, runtime and composer context when following defaults", () => {
+  it("preserves identity, project, runtime and composer context when following defaults", async () => {
     const draft = {
       ...newDefaultSession("/tmp/project", "auto"),
       composerSeed: "draft text",
       noteCard: { id: "note" },
       inboxCard: { id: "issue" },
     } as Session;
-    saveLastModelChoice("codex", "codex:saved");
+    await saveLastModelChoice("codex", "codex:saved");
     expect(followSessionDefaults(draft)).toEqual({
       ...draft,
       harness: "codex",
@@ -55,7 +55,7 @@ describe("draft inheritance", () => {
 
   it.each(["explicit", "busy", "history", "provider", "pending", "queued"])(
     "does not retarget a %s session",
-    (kind) => {
+    async (kind) => {
       let draft = newDefaultSession();
       if (kind === "explicit") draft = { ...draft, followsDefault: false };
       if (kind === "busy") draft.busy = true;
@@ -70,21 +70,21 @@ describe("draft inheritance", () => {
         };
       if (kind === "queued")
         draft.queuedMessages = [{ id: "q", text: "hello", attachments: [] }];
-      saveLastModelChoice("cursor", defaultModelId("cursor"));
+      await saveLastModelChoice("cursor", defaultModelId("cursor"));
       expect(followSessionDefaults(draft)).toBe(draft);
     },
   );
 
-  it("reads latest defaults at send and never revives inheritance after history clears", () => {
+  it("reads latest defaults at send and never revives inheritance after history clears", async () => {
     const draft = newDefaultSession();
-    saveLastModelChoice("codex", "codex:latest");
+    await saveLastModelChoice("codex", "codex:latest");
     const sent = sealSessionDefaults(draft);
     expect(sent).toMatchObject({
       harness: "codex",
       model: "codex:latest",
       followsDefault: false,
     });
-    saveLastModelChoice("cursor", defaultModelId("cursor"));
+    await saveLastModelChoice("cursor", defaultModelId("cursor"));
     expect(followSessionDefaults({ ...sent, blocks: [] })).toMatchObject({
       harness: "codex",
       followsDefault: false,
@@ -93,7 +93,7 @@ describe("draft inheritance", () => {
 
   it.each(["busy", "history", "provider", "pending"])(
     "does not reconcile model or settings at send for a %s session",
-    (kind) => {
+    async (kind) => {
       const draft = newSession("claude", "~", "claude:removed");
       draft.modelSettings = { effort: "extra-high" };
       if (kind === "busy") draft.busy = true;
@@ -106,7 +106,7 @@ describe("draft inheritance", () => {
         fromSettings: {},
       };
       setHarnessModels("claude", modelsFor("claude"));
-      saveLastModelChoice("cursor", defaultModelId("cursor"));
+      await saveLastModelChoice("cursor", defaultModelId("cursor"));
       expect(sealSessionDefaults(draft)).toEqual({
         ...draft,
         followsDefault: false,
@@ -116,7 +116,7 @@ describe("draft inheritance", () => {
 
   it.each([true, false])(
     "preserves draft provenance through snapshots and transfer, inherited=%s",
-    (inherited) => {
+    async (inherited) => {
       const draft = inherited ? newDefaultSession() : newSession("claude");
       const tab = newTab(draft.id);
       const snapshot = collectWorkspaceSnapshot(
@@ -135,7 +135,7 @@ describe("draft inheritance", () => {
         new Set(),
         draft.cwd,
       )!.sessions[0];
-      saveLastModelChoice("cursor", defaultModelId("cursor"));
+      await saveLastModelChoice("cursor", defaultModelId("cursor"));
       expect(followSessionDefaults(transferred).harness).toBe(
         inherited ? "cursor" : "claude",
       );
@@ -146,7 +146,7 @@ describe("draft inheritance", () => {
 describe("deferred model catalogs", () => {
   it.each(HARNESSES)(
     "preserves a live-only %s choice across cold boot and a delayed catalog",
-    (harness) => {
+    async (harness) => {
       const model = {
         id: `${harness}:live-only`,
         harness,
@@ -161,7 +161,7 @@ describe("deferred model catalogs", () => {
           },
         ],
       };
-      saveLastModelChoice(harness, model.id);
+      await saveLastModelChoice(harness, model.id);
       const draft = newDefaultSession();
       expect(draft.model).toBe(model.id);
       expect(refreshSessionModel(draft)).toBe(draft);
@@ -190,13 +190,13 @@ describe("deferred model catalogs", () => {
     expect(modelSelectionError("codex", "claude:opus-5")).toContain("does not belong");
   });
 
-  it("does not replace a saved prefix match before the live catalog", () => {
-    saveLastModelChoice("claude", "claude:claude-opus-5-custom");
+  it("does not replace a saved prefix match before the live catalog", async () => {
+    await saveLastModelChoice("claude", "claude:claude-opus-5-custom");
     expect(newDefaultSession().model).toBe("claude:claude-opus-5-custom");
   });
 
-  it("preserves a missing model after a live catalog and requires an explicit choice", () => {
-    saveLastModelChoice("claude", "claude:removed");
+  it("preserves a missing model after a live catalog and requires an explicit choice", async () => {
+    await saveLastModelChoice("claude", "claude:removed");
     const draft = newDefaultSession();
     setHarnessModels("claude", []);
     expect(refreshSessionModel(draft)).toBe(draft);

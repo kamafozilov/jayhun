@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+- Preserve the last saved default provider and per-provider models across desktop development, worktrees, and releases, loading them before session creation.
+- Use Codex when no default provider has been saved, without overriding an explicit choice.
+- Avoid opening Cursor login during background model catalog discovery.
+
 ## [0.1.43] - 2026-09-09
 
 ### Added

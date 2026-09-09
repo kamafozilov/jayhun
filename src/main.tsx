@@ -6,6 +6,7 @@ import { activateWindowAppearance, initAppearance } from "./lib/appearance";
 import { initSounds } from "./lib/sounds";
 import { handleQuitRequested, loadBootWorkspace } from "./lib/appLifecycle";
 import { consumeInstalledUpdate } from "./lib/updateNotice";
+import { initializeModelPreferences } from "./lib/models";
 import "./index.css";
 
 initAppearance();
@@ -38,7 +39,7 @@ void listen("quit_requested", () => {
   void handleQuitRequested();
 });
 
-void loadBootWorkspace().then(
+void initializeModelPreferences().then(loadBootWorkspace).then(
   ({ windowTransfer, resumed, history, historyCwd }) => {
     const installedUpdate = windowTransfer ? null : consumeInstalledUpdate();
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -54,5 +55,16 @@ void loadBootWorkspace().then(
         </BootGate>
       </React.StrictMode>,
     );
+  },
+  (error: unknown) => {
+    console.error("[jayhun] startup", error);
+    document.getElementById("boot-splash")?.remove();
+    const root = document.getElementById("root");
+    if (root) {
+      root.setAttribute("role", "alert");
+      root.textContent =
+        "Could not load saved preferences or workspace. Restart Jayhun to try again. " +
+        String(error);
+    }
   },
 );

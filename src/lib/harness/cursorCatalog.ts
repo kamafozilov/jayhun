@@ -87,9 +87,7 @@ async function discoverViaAcp(): Promise<AgentModel[]> {
         },
         REQUEST_TIMEOUT_MS,
       );
-      await acp
-        .request("authenticate", { methodId: "cursor_login" }, REQUEST_TIMEOUT_MS)
-        .catch(() => undefined);
+      // Discovery must use existing credentials; interactive login belongs to chat.
       const listed = await acp.request<unknown>(
         "cursor/list_available_models",
         {},

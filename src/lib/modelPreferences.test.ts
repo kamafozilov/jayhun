@@ -14,7 +14,7 @@ beforeEach(() => localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 
 describe("persisted provider preferences", () => {
-  it("migrates both legacy records in a single successful write", () => {
+  it("preserves other provider models when migrating legacy preferences", async () => {
     localStorage.setItem(
       "jayhun.lastModel",
       JSON.stringify({ harness: "claude", model: "claude:opus-5" }),
@@ -23,9 +23,7 @@ describe("persisted provider preferences", () => {
       "jayhun.defaultModels",
       JSON.stringify({ claude: "claude:opus-5", pi: "pi:custom" }),
     );
-    const write = vi.spyOn(localStorage, "setItem");
-    expect(saveLastModelChoice("codex", "codex:custom")).toBe(true);
-    expect(write).toHaveBeenCalledTimes(1);
+    expect(await saveLastModelChoice("codex", "codex:custom")).toBe(true);
     expect(loadDefaultModels()).toEqual({
       claude: "claude:opus-5",
       pi: "pi:custom",
@@ -39,8 +37,8 @@ describe("persisted provider preferences", () => {
 
   it.each(["provider", "model"])(
     "keeps the persisted selection and does not publish a failed %s save",
-    (kind) => {
-      saveLastModelChoice("claude", "claude:opus-5");
+    async (kind) => {
+      await saveLastModelChoice("claude", "claude:opus-5");
       const before = getModelPreferencesSnapshot();
       const listener = vi.fn();
       const unsubscribe = subscribeModelPreferences(listener);
@@ -49,8 +47,8 @@ describe("persisted provider preferences", () => {
       });
       const saved =
         kind === "provider"
-          ? saveLastModelChoice("codex", "codex:custom")
-          : saveDefaultModel("claude", "claude:sonnet-5");
+          ? await saveLastModelChoice("codex", "codex:custom")
+          : await saveDefaultModel("claude", "claude:sonnet-5");
       expect(saved).toBe(false);
       expect(getModelPreferencesSnapshot()).toBe(before);
       expect(listener).not.toHaveBeenCalled();
@@ -58,14 +56,14 @@ describe("persisted provider preferences", () => {
     },
   );
 
-  it("publishes successful writes after the current value can be read", () => {
+  it("publishes successful writes after the current value can be read", async () => {
     const values: unknown[] = [];
     const unsubscribe = subscribeModelPreferences(() =>
       values.push(defaultSessionChoice()),
     );
-    saveLastModelChoice("claude", "claude:opus-5");
-    saveDefaultModel("claude", "claude:sonnet-5");
-    saveDefaultModel("pi", "pi:custom");
+    await saveLastModelChoice("claude", "claude:opus-5");
+    await saveDefaultModel("claude", "claude:sonnet-5");
+    await saveDefaultModel("pi", "pi:custom");
     expect(values).toEqual([
       { harness: "claude", model: "claude:opus-5" },
       { harness: "claude", model: "claude:sonnet-5" },
@@ -97,7 +95,7 @@ describe("persisted provider preferences", () => {
     localStorage.clear();
     window.dispatchEvent(new StorageEvent("storage", { key: null }));
     expect(listener).toHaveBeenCalledTimes(2);
-    expect(defaultSessionChoice().harness).toBe("cursor");
+    expect(defaultSessionChoice().harness).toBe("codex");
     unsubscribe();
     window.dispatchEvent(
       new StorageEvent("storage", { key: "jayhun.modelPreferences" }),
@@ -124,10 +122,8 @@ it("keeps a valid legacy model map when its provider record is malformed", () =>
     "jayhun.defaultModels",
     JSON.stringify({ cursor: "cursor:saved" }),
   );
-  expect(defaultSessionChoice()).toEqual({
-    harness: "cursor",
-    model: "cursor:saved",
-  });
+  expect(loadDefaultModels()).toEqual({ cursor: "cursor:saved" });
+  expect(defaultSessionChoice().harness).toBe("codex");
 });
 
 it.each([
@@ -137,7 +133,7 @@ it.each([
   '{"choice":{"harness":"unknown","model":"bad"},"models":{}}',
 ])(
   "falls back to valid legacy preferences for malformed unified data %s",
-  (raw) => {
+  async (raw) => {
     localStorage.setItem("jayhun.modelPreferences", raw);
     localStorage.setItem(
       "jayhun.lastModel",
@@ -147,7 +143,7 @@ it.each([
       harness: "claude",
       model: "claude:opus-5",
     });
-    expect(saveDefaultModel("pi", "pi:saved")).toBe(true);
+    expect(await saveDefaultModel("pi", "pi:saved")).toBe(true);
     expect(defaultSessionChoice()).toEqual({
       harness: "claude",
       model: "claude:opus-5",

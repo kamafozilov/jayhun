@@ -181,10 +181,10 @@ describe("provider defaults", () => {
     mockLocalStorage();
   });
 
-  it("remembers a model per provider without changing the default provider", () => {
-    saveLastModelChoice("cursor", "cursor:grok-4.6");
-    saveDefaultModel("claude", "claude:opus-5");
-    saveDefaultModel("opencode", "opencode:glm-5");
+  it("remembers a model per provider without changing the default provider", async () => {
+    await saveLastModelChoice("cursor", "cursor:grok-4.6");
+    await saveDefaultModel("claude", "claude:opus-5");
+    await saveDefaultModel("opencode", "opencode:glm-5");
     expect(loadLastModelChoice()).toEqual({
       harness: "cursor",
       model: "cursor:grok-4.6",
@@ -207,18 +207,18 @@ describe("provider defaults", () => {
     expect(preferredModelId("claude")).toBe(defaultModelId("claude"));
   });
 
-  it("uses the saved default provider and its model for new sessions", () => {
-    saveLastModelChoice("claude", "claude:opus-5");
+  it("uses the saved default provider and its model for new sessions", async () => {
+    await saveLastModelChoice("claude", "claude:opus-5");
     expect(defaultSessionChoice()).toEqual({
       harness: "claude",
       model: "claude:opus-5",
     });
   });
 
-  it("keeps catalog defaults when nothing is saved", () => {
+  it("starts with Codex when no provider has been saved", () => {
     expect(defaultSessionChoice()).toEqual({
-      harness: "cursor",
-      model: defaultModelId("cursor"),
+      harness: "codex",
+      model: defaultModelId("codex"),
     });
   });
 });

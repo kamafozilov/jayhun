@@ -1,3 +1,5 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { HarnessId } from "./session";
 import { HARNESSES } from "./session";
 
@@ -606,6 +608,16 @@ function readPreferenceJson(key: string): unknown {
 }
 
 function readModelPreferences(): ModelPreferences {
+  if (isTauri()) {
+    if (!nativePreferences) {
+      throw new Error("Provider preferences must load before creating sessions");
+    }
+    return nativePreferences;
+  }
+  return readLocalModelPreferences();
+}
+
+function readLocalModelPreferences(): ModelPreferences {
   const raw = readPreferenceJson(MODEL_PREFERENCES_KEY);
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const value = raw as Record<string, unknown>;
@@ -624,6 +636,58 @@ function readModelPreferences(): ModelPreferences {
 }
 
 const preferenceListeners = new Set<() => void>();
+let nativePreferences: ModelPreferences | null = null;
+let preferenceInitialization: Promise<void> | null = null;
+let preferenceOperation: Promise<unknown> = Promise.resolve();
+
+// Serialize reads and saves so a delayed focus refresh cannot roll back a save.
+function enqueuePreferenceOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = preferenceOperation.then(operation);
+  preferenceOperation = result.catch(() => undefined);
+  return result;
+}
+
+function publishNativePreferences(value: ModelPreferences): void {
+  const changed = JSON.stringify(nativePreferences) !== JSON.stringify(value);
+  nativePreferences = value;
+  if (changed) {
+    for (const listener of preferenceListeners) listener();
+  }
+}
+
+function refreshNativePreferences(
+  legacy: ModelPreferences = { choice: null, models: {} },
+): Promise<void> {
+  return enqueuePreferenceOperation(async () => {
+    publishNativePreferences(
+      await invoke<ModelPreferences>("model_preferences_load", { legacy }),
+    );
+  });
+}
+
+/** Load the shared desktop store before workspace hydration or the first render. */
+export function initializeModelPreferences(): Promise<void> {
+  if (!isTauri()) return Promise.resolve();
+  if (!preferenceInitialization) {
+    preferenceInitialization = (async () => {
+      const refresh = () => {
+        void refreshNativePreferences().catch((error: unknown) => {
+          console.error("[jayhun] provider preferences refresh", error);
+        });
+      };
+      const unlisten = await listen("model-preferences-changed", refresh);
+      try {
+        await refreshNativePreferences(readLocalModelPreferences());
+      } catch (error) {
+        unlisten();
+        throw error;
+      }
+      // Tauri events cover sibling windows; focus covers separate dev/release apps.
+      window.addEventListener("focus", refresh);
+    })();
+  }
+  return preferenceInitialization;
+}
 
 export function getModelPreferencesSnapshot(): string {
   return JSON.stringify(readModelPreferences());
@@ -632,6 +696,7 @@ export function getModelPreferencesSnapshot(): string {
 export function subscribeModelPreferences(listener: () => void): () => void {
   preferenceListeners.add(listener);
   const onStorage = (event: StorageEvent) => {
+    if (isTauri()) return;
     if (event.storageArea && event.storageArea !== localStorage) return;
     if (
       event.key == null ||
@@ -651,7 +716,37 @@ export function subscribeModelPreferences(listener: () => void): () => void {
   };
 }
 
-function saveModelPreferences(value: ModelPreferences): boolean {
+async function saveModelPreferences(
+  harness: HarnessId,
+  model: string,
+  makeDefault: boolean,
+): Promise<boolean> {
+  if (isTauri()) {
+    try {
+      await initializeModelPreferences();
+      await enqueuePreferenceOperation(async () => {
+        publishNativePreferences(
+          await invoke<ModelPreferences>("model_preferences_save", {
+            harness,
+            model,
+            makeDefault,
+          }),
+        );
+      });
+      return true;
+    } catch (error) {
+      console.error("[jayhun] provider preferences save", error);
+      return false;
+    }
+  }
+  const previous = readModelPreferences();
+  const value: ModelPreferences = {
+    choice:
+      makeDefault || previous.choice?.harness === harness
+        ? { harness, model }
+        : previous.choice,
+    models: { ...previous.models, [harness]: model },
+  };
   try {
     localStorage.setItem(MODEL_PREFERENCES_KEY, JSON.stringify(value));
   } catch {
@@ -665,15 +760,11 @@ export function loadDefaultModels(): Partial<Record<HarnessId, string>> {
   return readModelPreferences().models;
 }
 
-export function saveDefaultModel(harness: HarnessId, model: string): boolean {
-  const previous = readModelPreferences();
-  return saveModelPreferences({
-    choice:
-      previous.choice?.harness === harness
-        ? { harness, model }
-        : previous.choice,
-    models: { ...previous.models, [harness]: model },
-  });
+export function saveDefaultModel(
+  harness: HarnessId,
+  model: string,
+): Promise<boolean> {
+  return saveModelPreferences(harness, model, false);
 }
 
 /** User-picked model for a provider, else the catalog default. */
@@ -688,7 +779,7 @@ export function preferredModelId(harness: HarnessId): string {
 /** Provider + model new conversations should start with. */
 export function defaultSessionChoice(): LastModelChoice {
   const last = loadLastModelChoice();
-  const harness = last?.harness ?? "cursor";
+  const harness = last?.harness ?? "codex";
   return { harness, model: preferredModelId(harness) };
 }
 
@@ -699,12 +790,8 @@ export function loadLastModelChoice(): LastModelChoice | null {
 export function saveLastModelChoice(
   harness: HarnessId,
   model: string,
-): boolean {
-  const previous = readModelPreferences();
-  return saveModelPreferences({
-    choice: { harness, model },
-    models: { ...previous.models, [harness]: model },
-  });
+): Promise<boolean> {
+  return saveModelPreferences(harness, model, true);
 }
 
 function parseStringRecord(value: unknown): Record<string, string> {
