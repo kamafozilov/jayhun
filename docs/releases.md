@@ -22,7 +22,7 @@ For a signed local macOS build:
 ```bash
 TAURI_SIGNING_PRIVATE_KEY_PASSWORD='' \
 TAURI_SIGNING_PRIVATE_KEY="$HOME/.config/jayhun/update-signing/updater.key" \
-  npm run tauri build -- --bundles app
+  pnpm run tauri build --bundles app
 ```
 
 Tauri signatures protect updates. These personal builds are not Apple
@@ -32,7 +32,7 @@ for the updater signature.
 
 ## Prepare a release
 
-1. Run `npm run set-version -- 0.1.42` with the next version.
+1. Run `pnpm run set-version 0.1.42` with the next version.
 2. Update `CHANGELOG.md` and `docs/release-notes.md`.
 3. Commit and push the release changes.
 4. Run **Build release** from GitHub Actions on that branch, or push the

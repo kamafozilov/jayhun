@@ -75,7 +75,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+          cache: true
+          cache_dependency_path: pnpm-lock.yaml
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -85,8 +89,8 @@ jobs:
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: bash scripts/install-linux-deps-debian.sh
-      - run: npm ci
-      - run: npm run check:web
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check:web
       - uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -99,6 +103,7 @@ jobs:
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          tauriScript: pnpm exec tauri
 
   verify:
     if: ${{ always() && needs.prepare.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}

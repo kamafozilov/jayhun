@@ -14,7 +14,7 @@ Follow the setup commands in [README.md](README.md).
 
 ## Before pushing
 
-Run `npm run check` and `npm run build`. For UI changes, also open the desktop
+Run `pnpm run check` and `pnpm run build`. For UI changes, also open the desktop
 app and verify the changed flow. Keep file contents and commit messages in English.
 Use Conventional Branch names and Conventional Commits. Preserve attribution
 when importing upstream code.

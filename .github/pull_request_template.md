@@ -12,6 +12,6 @@
 
 ## Checklist
 
-- [ ] I ran `npm run check`
+- [ ] I ran `pnpm run check`
 - [ ] This PR is small and focused
 - [ ] I did not mix unrelated changes

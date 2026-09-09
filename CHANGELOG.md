@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Use pinned pnpm 11.22.0 for dependency installation, development, CI, and releases.
 - Check for updates 15 seconds after startup and every four minutes in packaged builds.
 - Dismiss the installed update card after closing its release notes.
 - Widen the release notes dialog and size it to its content.
