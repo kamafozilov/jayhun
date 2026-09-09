@@ -4,6 +4,7 @@
   "version": "0.1.41",
   "type": "module",
   "scripts": {
+    "start": "node scripts/start.mjs",
     "dev": "vite",
     "dev:stable": "vite --mode stable",
     "build": "tsc && vite build",

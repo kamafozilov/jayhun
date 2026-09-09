@@ -16,11 +16,27 @@ Use Node.js 24, npm, and Rust stable. The repository includes `.nvmrc` and
 
 ```bash
 npm ci
-npm run tauri dev
+npm start
 ```
 
-`npm run dev` starts only the frontend. Use `npm run tauri dev` for the desktop
-app and its native features. `npm run tauri:stable` runs without Rust file watching.
+`npm start` opens the desktop app with frontend and Rust file watching disabled.
+It uses the same configuration as `npm run tauri:stable`.
+
+On Linux, the launcher defaults `WEBKIT_DISABLE_DMABUF_RENDERER` to `1`.
+This works around a WebKit rendering issue that can cause an empty window or
+`Error 71 (Protocol error)` on Wayland. It preserves an existing value and does
+not change the environment on macOS or Windows. Packaged builds are unaffected.
+See the [WebKit issue](https://bugs.webkit.org/show_bug.cgi?id=291332).
+
+To try the default WebKit renderer again on Linux:
+
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=0 npm start
+```
+
+For development with file watching, use `npm run tauri dev`. On affected Linux
+machines, use `WEBKIT_DISABLE_DMABUF_RENDERER=1 npm run tauri dev`.
+`npm run dev` starts only the frontend, without native desktop features.
 
 ## Checks and builds
 
